@@ -50,7 +50,7 @@ use time_manager_mod, only : time_type, get_time, set_time
 ! For more help on compiling a module which uses MPI see the 
 ! $DART/developer_tests/mpi_utilities/tests/README
 
-use mpi
+use mpi_f08
 
 ! the NAG compiler needs these special definitions enabled
 
@@ -111,9 +111,9 @@ end interface
 
 integer :: myrank        = -1  ! my mpi number
 integer :: total_tasks   = -1  ! total mpi tasks/procs
-integer :: my_local_comm =  0  ! duplicate communicator private to this file
-integer :: datasize      =  0  ! which MPI type corresponds to our r8 definition
-integer :: longinttype   =  0  ! create an MPI type corresponding to our i8 definition
+type(MPI_Comm)     :: my_local_comm ! duplicate communicator private to this file
+type(MPI_Datatype) :: datasize      ! which MPI type corresponds to our r8 definition
+type(MPI_Datatype) :: longinttype   ! create an MPI type corresponding to our i8 definition
 
 
 
@@ -206,7 +206,7 @@ subroutine initialize_mpi_utilities(progname, alternatename, communicator)
 
 character(len=*), intent(in), optional :: progname
 character(len=*), intent(in), optional :: alternatename
-integer,          intent(in), optional :: communicator
+type(MPI_Comm), intent(in), optional :: communicator
 
 integer :: errcode, iunit
 logical :: already
@@ -662,7 +662,7 @@ subroutine receive_from(src_id, destarray, time, label)
 
 integer :: tag, errcode
 integer :: itime(2)
-integer :: status(MPI_STATUS_SIZE)
+type(MPI_Status) :: status
 integer :: itemcount, offset, nextsize
 real(r8), allocatable :: tmpdata(:)
 
@@ -1743,7 +1743,7 @@ function shell_execute(execute_string, serialize)
 
 logical :: all_at_once
 integer :: errcode, dummy(1)
-integer :: status(MPI_STATUS_SIZE)
+type(MPI_Status) :: status
 
 if (verbose) async2_verbose = .true.
 
@@ -1916,7 +1916,7 @@ end function read_mpi_timer
 !> return our communicator
 
 function get_dart_mpi_comm()
- integer :: get_dart_mpi_comm
+ type(MPI_Comm) :: get_dart_mpi_comm
 
  get_dart_mpi_comm = my_local_comm
 
@@ -1929,7 +1929,7 @@ end function get_dart_mpi_comm
 subroutine get_from_mean(owner, window, mindex, x)
 
 integer,  intent(in)  :: owner  ! task in the window that owns the memory
-integer,  intent(in)  :: window ! window object
+type(MPI_Win),  intent(in)  :: window ! window object
 integer,  intent(in)  :: mindex ! index in the tasks memory
 real(r8), intent(out) :: x      ! result
 
@@ -1955,7 +1955,7 @@ end subroutine get_from_mean
 subroutine get_from_fwd(owner, window, mindex, num_rows, x)
 
 integer,  intent(in)  :: owner    ! task in the window that owns the memory
-integer,  intent(in)  :: window   ! window object
+type(MPI_Win),  intent(in)  :: window   ! window object
 integer,  intent(in)  :: mindex   ! index in the tasks memory
 integer,  intent(in)  :: num_rows ! number of rows in the window
 real(r8), intent(out) :: x(:)     ! result
