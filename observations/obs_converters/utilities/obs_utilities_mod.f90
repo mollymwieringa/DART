@@ -219,9 +219,9 @@ endif
 call set_obs_def(obs, obs_def)
 
 obs_val(1) = obsv
-call set_obs_values(obs, obs_val)
+call set_obs_values(obs, obs_val, 1)
 qc_val(1)  = qc
-call set_qc(obs, qc_val)
+call set_qc(obs, qc_val, 1)
 
 end subroutine create_obs
 
