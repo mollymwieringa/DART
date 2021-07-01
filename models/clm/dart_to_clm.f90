@@ -50,6 +50,7 @@ use netcdf_utilities_mod, only : nc_open_file_readonly, &
                                  nc_open_file_readwrite,&
                                  nc_get_variable_num_dimensions, &
                                  nc_get_variable_dimension_names, &
+                                 nc_get_dimension_size,  &
                                  nc_get_variable_size,  &
                                  nc_get_variable, &
                                  nc_put_variable, &
@@ -76,6 +77,7 @@ namelist /dart_to_clm_nml/ dart_to_clm_input_file, &
 !----------------------------------------------------------------------
 
 integer            :: iunit, io, dom_restart, ivar, rank, irank
+integer            :: nlevsno
 integer            :: ncid_dart, ncid_clm
 type(time_type)    :: dart_time, clm_time
 
@@ -105,6 +107,8 @@ ncid_clm  = nc_open_file_readwrite(dart_to_clm_output_file, 'opening to write re
 write(string1,*)'reading updated values from DART file "'//trim(dart_to_clm_input_file)//'"'
 write(string2,*)'and writing to CLM restart file "'//trim(dart_to_clm_output_file)//'"'
 call error_handler(E_MSG,source,string1,text2=string2)
+
+nlevsno = nc_get_dimension_size(ncid_dart,'levsno')
 
 ! Make sure we are updating the right restart file - 
 
@@ -217,6 +221,14 @@ end subroutine replace_values_1D
 !> the CLM declared '_FillValue' and the clamping values have been honored. 
 !> Get the 'original' variable from the netcdf file.
 
+! test ignoring updating anything in the snow layers.
+! If the variable  has 'levsno', 'levsno1', or 'levtot' dimensions, 
+! we can ignore stuff in the snow layers.
+
+! double T_SOISNO(  column, levtot) ; 'QTY_TEMPERATURE'
+! double H2OSOI_LIQ(column, levtot) ; 'QTY_SOIL_LIQUID_WATER'
+! double H2OSOI_ICE(column, levtot) ; 'QTY_SOIL_ICE'
+
 subroutine replace_values_2D(dom_id, ivar, ncid_dart, ncid_clm)
 
 integer, intent(in) :: dom_id
@@ -247,6 +259,8 @@ allocate(dart_array(varsize(1),varsize(2)), clm_array(varsize(1),varsize(2)))
 
 call nc_get_variable(ncid_clm,  varname,  clm_array)
 call nc_get_variable(ncid_dart, varname, dart_array)
+
+call Ignore_Snow_Layers(dom_id,ivar,dart_array)
 
 where(dart_array /= special) clm_array = dart_array
 
@@ -322,6 +336,47 @@ endif
 
 end subroutine Compatible_Variables
 
+
+!------------------------------------------------------------------
+!> test ignoring updating anything in the snow layers.
+!> wondering if it will remove the 'soil' balance errors.
+!> If the variable  has 'levsno', 'levsno1', or 'levtot' dimensions, 
+!> we can ignore stuff in the snow layers.
+
+! double T_SOISNO(  column, levtot) ; 'QTY_TEMPERATURE'
+! double H2OSOI_LIQ(column, levtot) ; 'QTY_SOIL_LIQUID_WATER'
+! double H2OSOI_ICE(column, levtot) ; 'QTY_SOIL_ICE'
+
+subroutine Ignore_Snow_Layers(dom_id, ivar, array)
+
+integer,  intent(in)    :: dom_id
+integer,  intent(in)    :: ivar
+real(r8), intent(inout) :: array(:,:)
+
+character(len=*), parameter :: routine = 'Ignore_Snow_Layers'
+
+real(r8) :: special
+character(len=NF90_MAX_NAME) :: dimname(2),varname
+
+varname    = get_variable_name(dom_id, ivar)
+dimname(1) = get_dim_name(     dom_id, ivar, 1)
+dimname(2) = get_dim_name(     dom_id, ivar, 2)
+
+! By replacing the DART posterior with the MISSING_R8 value,
+! the original CLM value should remain intact.
+! If this prevents the soil balance error 
+
+select case( trim(dimname(1)) )
+   case ('levtot')
+      ! write(*,*)'TJH dimension names are ',trim(dimname(1)),' ',trim(dimname(2))
+      ! write(*,*)'TJH array shape is ',size(array,1),size(array,2)
+      ! write(*,*)
+      array(1:nlevsno,:) = MISSING_R8
+   case default
+      continue
+end select
+
+end subroutine Ignore_Snow_Layers
 
 
 !===============================================================================
