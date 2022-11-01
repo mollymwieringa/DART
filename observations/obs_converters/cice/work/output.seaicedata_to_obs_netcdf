@@ -1,0 +1,30 @@
+ 
+ --------------------------------------
+ Starting ... at YYYY MM DD HH MM SS = 
+                 2022 10  4 14 22 26
+ Program seaicedata_to_obs_netcdf
+ --------------------------------------
+ 
+  set_nml_output Echo NML values to log file only
+ 
+ Assimilate_these_obs_types:
+    SAT_SEAICE_AGREG_CONCENTR
+    SAT_SEAICE_AGREG_THICKNESS
+ Evaluate_these_obs_types:
+    none
+ Use the precomputed Prior Forward Operators for these obs types:
+    none
+ 
+  location_mod: using code with optimized cutoffs
+  location_mod: Ignoring vertical separation when computing distances; horizonta
+ l distances only
+  write_obs_seq  opening formatted observation sequence file "/glade/work/mollyw
+ /DA_obs/PROCESSED_OBS_SEQ/IS2/thickness/obs_seq.2019-01-31-00000"
+  write_obs_seq  closed observation sequence file "/glade/work/mollyw/DA_obs/PRO
+ CESSED_OBS_SEQ/IS2/thickness/obs_seq.2019-01-31-00000"
+ 
+ --------------------------------------
+ Finished ... at YYYY MM DD HH MM SS = 
+                 2022 10  4 14 22 26
+ --------------------------------------
+ 
