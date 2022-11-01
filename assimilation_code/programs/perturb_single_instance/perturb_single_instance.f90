@@ -2,9 +2,13 @@
 ! by UCAR, "as is", without charge, subject to all terms of use at
 ! http://www.image.ucar.edu/DAReS/DART/DART_download
 
+!>@todo FIXME the html needs to be made consistent with the namelist once the namelist
+!> is fleshed out.
 
 !> This is a utility program that computes an ensemble of restarts
-!> using the model_mod pert_model_copies
+!> using the models pert_model_copies, if provided, or uses standard
+!> gaussian noise with perturbation_amplitude standard deviation if
+!> no routine is provided.
 
 program perturb_single_instance
 
@@ -192,10 +196,6 @@ do i = 1, get_my_num_vars(ens_handle)
 enddo
 
 call pert_model_copies(ens_handle, ens_size, perturbation_amplitude, interf_provided)
-if (.not. interf_provided) then
-   call error_handler(E_ERR, 'model_mod::pert_model_copies interface required', source)
-endif 
-
 
 !----------------------------------------------------------------------
 ! can be ens_size but rather a single file 

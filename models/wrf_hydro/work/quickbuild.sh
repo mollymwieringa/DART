@@ -11,8 +11,7 @@ source "$DART"/build_templates/buildfunctions.sh
 
 MODEL=wrf_hydro
 LOCATION=threed_sphere
-EXTRA="$DART/models/wrf/module_map_utils.f90 \
-       $DART/observations/obs_converters/utilities/obs_utilities_mod.f90"
+EXTRA="$DART/models/wrf/module_map_utils.f90"
 
 
 programs=(

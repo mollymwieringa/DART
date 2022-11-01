@@ -16,7 +16,7 @@ use  utilities_mod,       only : file_exist, get_unit, check_namelist_read, do_o
                                  find_namelist_in_file, error_handler,   &
                                  E_ERR, E_MSG, nmlfileunit, do_nml_file, do_nml_term,     &
                                  open_file, close_file, timestamp
-use       sort_mod,       only : index_sort 
+use       sort_mod,       only : index_sort, sort
 use random_seq_mod,       only : random_seq_type, random_gaussian, init_random_seq,       &
                                  random_uniform
 
@@ -71,6 +71,11 @@ use distributed_state_mod, only : create_mean_window, free_mean_window
 
 use quality_control_mod, only : good_dart_qc, DARTQC_FAILED_VERT_CONVERT
 
+use quantile_distributions_mod, only : dist_param_type, convert_to_probit, convert_from_probit, &
+                                       convert_all_to_probit, convert_all_from_probit, &
+                                       norm_cdf, norm_inv, weighted_norm_inv, probit_dist_info, &
+                                       NORMAL_PRIOR, BOUNDED_NORMAL_RH_PRIOR
+
 implicit none
 private
 
@@ -81,6 +86,9 @@ public :: filter_assim, &
 
 ! Indicates if module initialization subroutine has been called yet
 logical :: module_initialized = .false.
+
+! Saves the ensemble size used in the previous call of obs_inc_bounded_norm_rhf
+integer :: bounded_norm_rhf_ens_size = -99
 
 integer :: print_timestamps    = 0
 integer :: print_trace_details = 0
@@ -185,6 +193,9 @@ logical  :: only_area_adapt  = .true.
 ! compared to previous versions of this namelist item.
 logical  :: distribute_mean  = .false.
 
+! If true, observation space RHF prior is bounded below at 0
+logical :: USE_BOUNDED_RHF_OBS_PRIOR = .true.
+
 namelist / assim_tools_nml / filter_kind, cutoff, sort_obs_inc, &
    spread_restoration, sampling_error_correction,                          &
    adaptive_localization_threshold, adaptive_cutoff_floor,                 &
@@ -193,7 +204,8 @@ namelist / assim_tools_nml / filter_kind, cutoff, sort_obs_inc, &
    special_localization_obs_types, special_localization_cutoffs,           &
    distribute_mean, close_obs_caching,                                     &
    adjust_obs_impact, obs_impact_filename, allow_any_impact_values,        &
-   convert_all_state_verticals_first, convert_all_obs_verticals_first
+   convert_all_state_verticals_first, convert_all_obs_verticals_first,     &
+   USE_BOUNDED_RHF_OBS_PRIOR
 
 !============================================================================
 
@@ -323,6 +335,7 @@ logical,                     intent(in)    :: inflate_only
 ! changed the ensemble sized things here to allocatable
 
 real(r8) :: obs_prior(ens_size), obs_inc(ens_size), updated_ens(ens_size)
+real(r8) :: obs_post(ens_size), probit_obs_prior(ens_size), probit_obs_post(ens_size)
 real(r8) :: final_factor
 real(r8) :: net_a(num_groups), correl(num_groups)
 real(r8) :: obs(1), obs_err_var, my_inflate, my_inflate_sd
@@ -369,6 +382,14 @@ logical :: local_single_ss_inflate
 logical :: local_varying_ss_inflate
 logical :: local_ss_inflate
 logical :: local_obs_inflate
+
+! Storage for normal probit conversion, keeps prior mean and sd for all state ensemble members
+type(dist_param_type) :: state_dist_params(ens_handle%my_num_vars)
+type(dist_param_type) :: obs_dist_params(obs_ens_handle%my_num_vars)
+integer :: state_dist_type, obs_dist_type
+type(dist_param_type) :: temp_dist_params
+logical  :: bounded(2)
+real(r8) :: bounds(2), probit_ens(ens_size)
 
 ! allocate rather than dump all this on the stack
 allocate(close_obs_dist(     obs_ens_handle%my_num_vars), &
@@ -493,6 +514,14 @@ call get_my_vars(ens_handle, my_state_indx)
 ! Get the location and kind of all my state variables
 do i = 1, ens_handle%my_num_vars
    call get_state_meta_data(my_state_indx(i), my_state_loc(i), my_state_kind(i))
+
+   ! Need to specify what kind of prior to use for each
+   call probit_dist_info(my_state_kind(i), .true., .false., state_dist_type, bounded, bounds)
+
+   ! Convert all my state variables to appropriate probit space
+   call convert_to_probit(ens_size, ens_handle%copies(1:ens_size, i), state_dist_type, &
+      state_dist_params(i), probit_ens, .false., bounded, bounds)
+   ens_handle%copies(1:ens_size, i) = probit_ens
 end do
 
 !> optionally convert all state location verticals
@@ -513,6 +542,20 @@ if(local_ss_inflate) then
            obs_mean_index, obs_var_index)
    end do
 endif
+
+! Have gotten the mean and variance from original ensembles, can convert all my obs to probit
+! CAN WE DO THE ADAPTIVE INFLATION ENTIRELY IN PROBIT SPACE TO MAKE IT DISTRIBUTION INDEPENDENT????
+! WOULD NEED AN OBSERVATION ERROR VARIANCE IN PROBIT SPACE SOMEHOW. IS THAT POSSIBLE???
+
+do i = 1, my_num_obs
+   ! Need to specify what kind of prior to use for each
+   call probit_dist_info(my_obs_kind(i), .false., .false., obs_dist_type, bounded, bounds)
+
+   ! Convert all my obs (extended state) variables to appropriate probit space
+   call convert_to_probit(ens_size, obs_ens_handle%copies(1:ens_size, i), obs_dist_type, &
+      obs_dist_params(i), probit_ens, .false., bounded, bounds)
+   obs_ens_handle%copies(1:ens_size, i) = probit_ens
+end do
 
 ! Initialize the method for getting state variables close to a given ob on my process
 if (has_special_cutoffs) then
@@ -597,12 +640,17 @@ SEQUENTIAL_OBS: do i = 1, obs_ens_handle%num_vars
 
       ! Only value of 0 for DART QC field should be assimilated
       IF_QC_IS_OKAY: if(nint(obs_qc) ==0) then
-         obs_prior = obs_ens_handle%copies(1:ens_size, owners_index)
          ! Note that these are before DA starts, so can be different from current obs_prior
          orig_obs_prior_mean = obs_ens_handle%copies(OBS_PRIOR_MEAN_START: &
             OBS_PRIOR_MEAN_END, owners_index)
          orig_obs_prior_var  = obs_ens_handle%copies(OBS_PRIOR_VAR_START:  &
             OBS_PRIOR_VAR_END, owners_index)
+
+         ! If QC is okay, convert this observation ensemble from probit to regular space
+         call convert_from_probit(ens_size, obs_ens_handle%copies(1:ens_size, owners_index) , &
+            obs_dist_params(owners_index), obs_ens_handle%copies(1:ens_size, owners_index))
+
+         obs_prior = obs_ens_handle%copies(1:ens_size, owners_index)
       endif IF_QC_IS_OKAY
 
       !Broadcast the info from this obs to all other processes
@@ -642,6 +690,32 @@ SEQUENTIAL_OBS: do i = 1, obs_ens_handle%num_vars
       call obs_increment(obs_prior(grp_bot:grp_top), grp_size, obs(1), &
          obs_err_var, obs_inc(grp_bot:grp_top), inflate, my_inflate,   &
          my_inflate_sd, net_a(group))
+      obs_post(grp_bot:grp_top) = obs_prior(grp_bot:grp_top) + obs_inc(grp_bot:grp_top)
+
+      ! Convert both the prior and posterior to probit space (efficiency for prior???)
+      ! Running probit space with groups needs to be studied more carefully
+      ! EFFICIENCY NOTE: FOR RHF, THE OBS_INCREMENT HAS TO DO A SORT
+      ! THE POSTERIOR WOULD HAVE THE SAME RANK STATISTICS, SO THIS SORT WOULD BE THE SAME
+      ! THE SECOND CONVERT_TO_PROBIT CAN BE MUCH MORE EFFICIENT USING A SORT
+      ! SHOULD FIGURE OUT A WAY TO PASS THE SORT ORDER
+      ! NOTE 2: THIS CONVERSION IS USING THE INFO FROM THE CURRENT (UPDATED) PRIOR ENSEMBLE. THIS
+      ! IS GENERALLY GOING TO BE A DIFFERENT PROBIT TRANSFORMED ENSEMBLE THAN THE ONE THAT WAS JUST
+      ! CONVERTED FROM PROBIT SPACE BY THE PROCESS THAT OWNS THIS OBSERVATION. 
+
+      ! Need to specify what kind of prior to use for each
+      call probit_dist_info(my_obs_kind(i), .false., .false., obs_dist_type, bounded, bounds)
+
+      ! Convert the prior and posterior for this observation to probit space
+      call convert_to_probit(grp_size, obs_prior(grp_bot:grp_top), obs_dist_type, &
+         temp_dist_params, probit_obs_prior(grp_bot:grp_top), .false., bounded, bounds)
+      call convert_to_probit(grp_size, obs_post(grp_bot:grp_top), obs_dist_type, &
+         temp_dist_params, probit_obs_post(grp_bot:grp_top), .true., bounded, bounds)
+
+      ! Copy back into original storage
+      obs_prior(grp_bot:grp_top) = probit_obs_prior(grp_bot:grp_top)
+      obs_post(grp_bot:grp_top) = probit_obs_post(grp_bot:grp_top)
+      ! Recompute obs_inc in probit space
+      obs_inc(grp_bot:grp_top) = obs_post(grp_bot:grp_top) - obs_prior(grp_bot:grp_top)
 
       ! Also compute prior mean and variance of obs for efficiency here
       obs_prior_mean(group) = sum(obs_prior(grp_bot:grp_top)) / grp_size
@@ -750,6 +824,10 @@ SEQUENTIAL_OBS: do i = 1, obs_ens_handle%num_vars
    endif
 end do SEQUENTIAL_OBS
 
+! Do the inverse probit transform for state variables
+call convert_all_from_probit(ens_size, ens_handle%my_num_vars, ens_handle%copies, &
+   state_dist_params, ens_handle%copies)
+
 ! Every pe needs to get the current my_inflate and my_inflate_sd back
 if(local_single_ss_inflate) then
    ens_handle%copies(ENS_INF_COPY, :) = my_inflate
@@ -838,6 +916,11 @@ integer  :: i, ens_index(ens_size), new_index(ens_size)
 
 real(r8) :: rel_weights(ens_size)
 
+! Declarations for bounded rank histogram filter
+real(r8) :: likelihood(ens_size)
+logical  :: is_bounded(2)
+real(r8) :: bound(2), like_sum
+
 ! Copy the input ensemble to something that can be modified
 ens = ens_in
 
@@ -914,6 +997,38 @@ else
       call obs_increment_boxcar(ens, ens_size, obs, obs_var, obs_inc, rel_weights)
    else if(filter_kind == 8) then
       call obs_increment_rank_histogram(ens, ens_size, prior_var, obs, obs_var, obs_inc)
+   !--------------------------------------------------------------------------
+   else if(filter_kind == 101) then
+
+      ! Use a Bounded normal RHF prior
+      ! This should be set to true for QCEF paper case with square obs
+      if(USE_BOUNDED_RHF_OBS_PRIOR) then
+         is_bounded(1) = .true.
+         is_bounded(2) = .false.
+         bound = (/0.0_r8, -99999.0_r8/)
+      else
+         is_bounded = .false.
+         bound = (/-99999.0_r8, -99999.0_r8/)
+      endif
+
+      ! Test bounded normal likelihood; Could use an arbitrary likelihood
+      do i = 1, ens_size
+         likelihood(i) = get_truncated_normal_like(ens(i), obs, obs_var, is_bounded, bound)
+      end do
+
+      ! Normalize the likelihood here
+      like_sum = sum(likelihood)
+      ! If likelihood underflow, assume flat likelihood, so no increments
+      if(like_sum <= 0.0_r8) then
+         obs_inc = 0.0_r8
+         return
+      else
+         likelihood = likelihood / like_sum
+      endif
+
+      call obs_increment_bounded_norm_rhf(ens, likelihood, ens_size, prior_var, &
+         obs_inc, is_bounded, bound)
+   !--------------------------------------------------------------------------
    else
       call error_handler(E_ERR,'obs_increment', &
               'Illegal value of filter_kind in assim_tools namelist [1-8 OK]', source)
@@ -1020,6 +1135,351 @@ new_ens = (new_ens - new_mean) * sqrt(new_var / temp_var) + new_mean
 obs_inc = new_ens - ens
 
 end subroutine obs_increment_ran_kf
+
+subroutine obs_increment_bounded_norm_rhf(ens, ens_like, ens_size, prior_var, &
+   obs_inc, is_bounded, bound)
+!------------------------------------------------------------------------
+integer,  intent(in)  :: ens_size
+real(r8), intent(in)  :: ens(ens_size)
+real(r8), intent(in)  :: ens_like(ens_size)
+real(r8), intent(in)  :: prior_var
+real(r8), intent(out) :: obs_inc(ens_size)
+logical,  intent(in)  :: is_bounded(2)
+real(r8), intent(in)  :: bound(2)
+
+! Does bounded RHF assuming that the prior in outer regions is part of a normal. 
+! is_bounded indicates if a bound exists on left/right and the 
+! bound value says what the bound is if is_bounded is true
+
+! This interface is specifically tailored to the information for just doing observation
+! space. It does the sorting of the ensemble and computes the piecewise constant likelihood. 
+! It then calls  ens_increment_bounded_norm_rhf which is also used by state space QCEFF
+! code that only has a piecewise constant likelihood and has already sorted the ensemble.
+
+real(r8) :: sort_ens(ens_size), sort_ens_like(ens_size), sort_post(ens_size)
+real(r8) :: piece_const_like(0:ens_size)
+integer  :: i, sort_ind(ens_size)
+
+! If all ensemble members are identical, this algorithm becomes undefined, so fail
+if(prior_var <= 0.0_r8) then
+      msgstring = 'Ensemble variance <= 0 '
+      call error_handler(E_ERR, 'obs_increment_bounded_norm_rhf', msgstring, source)
+endif
+
+! Do an index sort of the ensemble members; Use prior info for efficiency in the future
+call index_sort(ens, sort_ind, ens_size)
+
+! Get the sorted ensemble
+sort_ens = ens(sort_ind)
+
+! Get the sorted likelihood
+sort_ens_like = ens_like(sort_ind)
+
+! Compute the mean likelihood in each interior interval (bin)
+do i = 1, ens_size - 1
+   piece_const_like(i) = (sort_ens_like(i) + sort_ens_like(i + 1)) / 2.0_r8
+end do
+
+! Likelihoods for outermost regions (bounded or unbounded); just outermost ensemble like
+piece_const_like(0) = sort_ens_like(1)
+piece_const_like(ens_size) = sort_ens_like(ens_size)
+
+call ens_increment_bounded_norm_rhf(sort_ens, piece_const_like, ens_size, prior_var, &
+   sort_post, is_bounded, bound)
+
+! These are increments for sorted ensemble; convert to increments for unsorted
+do i = 1, ens_size
+   obs_inc(sort_ind(i)) = sort_post(i) - ens(sort_ind(i))
+end do
+
+end subroutine obs_increment_bounded_norm_rhf
+
+
+
+
+! Computes a normal or truncated normal (above and/or below) likelihood.
+function get_truncated_normal_like(x, obs, obs_var, is_bounded, bound)
+!------------------------------------------------------------------------
+real(r8)             :: get_truncated_normal_like
+real(r8), intent(in) :: x
+real(r8), intent(in) :: obs, obs_var
+logical,  intent(in) :: is_bounded(2)
+real(r8), intent(in) :: bound(2)
+
+integer :: i
+real(r8) :: cdf(2), obs_sd, weight
+
+obs_sd = sqrt(obs_var)
+
+! If the truth were at point x, what is the weight of the truncated normal obs error dist?
+! If no bounds, the whole cdf is possible
+cdf(1) = 0.0_r8
+cdf(2) = 1.0_r8
+
+! Compute the cdf's at the bounds if they exist
+do i = 1, 2
+   if(is_bounded(i)) then
+      cdf(i) = norm_cdf(bound(i), x, obs_sd)
+   endif
+end do
+
+! The weight is the reciprocal of the fraction of the cdf that is in legal range
+weight = 1.0_r8 / (cdf(2) - cdf(1))
+
+get_truncated_normal_like = weight * exp(-1.0_r8 * (x - obs)**2 / (2.0_r8 * obs_var))
+
+end function get_truncated_normal_like
+
+
+
+subroutine ens_increment_bounded_norm_rhf(sort_ens, piece_const_like, ens_size, prior_var, &
+   sort_post, is_bounded, bound)
+!-----------------------------------------------------------------------
+integer,  intent(in)  :: ens_size
+real(r8), intent(in)  :: sort_ens(ens_size)
+real(r8), intent(in)  :: piece_const_like(0:ens_size)
+real(r8), intent(in)  :: prior_var
+real(r8), intent(out) :: sort_post(ens_size)
+logical,  intent(in)  :: is_bounded(2)
+real(r8), intent(in)  :: bound(2)
+
+real(r8) :: post_weight(0:ens_size)
+real(r8) :: tail_mean(2), tail_sd(2), prior_bound_mass(2), prior_tail_amp(2)
+real(r8) :: prior_sd, base_prior_prob, like_sum, bound_quantile
+logical  :: do_uniform_tail(2)
+integer  :: i
+
+! Parameter to control switch to uniform approximation for normal tail
+real(r8), parameter :: uniform_threshold = 1e-5_r8
+
+! Save to avoid a modestly expensive computation redundancy
+real(r8), save :: dist_for_unit_sd
+
+! For unit normal, find distance from mean to where cdf is 1/(ens_size+1).
+! Saved to avoid redundant computation for repeated calls with same ensemble size
+if(bounded_norm_rhf_ens_size /= ens_size) then
+   call norm_inv(1.0_r8 / (ens_size + 1.0_r8), dist_for_unit_sd)
+   ! This will be negative, want it to be a distance so make it positive
+   dist_for_unit_sd = -1.0_r8 * dist_for_unit_sd
+   ! Keep a record of the ensemble size used to compute dist_for_unit_sd
+   bounded_norm_rhf_ens_size = ens_size
+endif
+
+! Fail if lower bound is larger than smallest ensemble member 
+if(is_bounded(1)) then
+   ! Do in two ifs in case the bound is not defined
+   if(sort_ens(1) < bound(1)) then
+      msgstring = 'Ensemble member less than lower bound'
+      call error_handler(E_ERR, 'ens_increment_bounded_norm_rhf', msgstring, source)
+   endif
+endif
+
+! Fail if upper bound is smaller than the largest ensemble member 
+if(is_bounded(2)) then
+   if(sort_ens(ens_size) > bound(2)) then
+      msgstring = 'Ensemble member greater than upper bound'
+      call error_handler(E_ERR, 'ens_increment_bounded_norm_rhf', msgstring, source)
+   endif
+endif
+
+! Posterior is prior times likelihood, normalized so the sum of weight is 1
+! Prior has 1 / (ens_size + 1) probability in each region, so it just normalizes out.
+! Posterior weights are then just the likelihood in each region normalized
+like_sum = sum(piece_const_like)
+if(like_sum < 0.0_r8) then
+   msgstring = 'Sum of piece_const_like is <= 0'
+   call error_handler(E_ERR, 'ens_increment_bounded_norm_rhf', msgstring, source)
+else
+   post_weight = piece_const_like/ like_sum
+endif
+
+
+! Standard deviation of prior tails is prior ensemble standard deviation
+prior_sd = sqrt(prior_var)
+tail_sd(1:2) = prior_sd
+! Find a mean so that 1 / (ens_size + 1) probability is in outer regions
+tail_mean(1) = sort_ens(1) + dist_for_unit_sd * prior_sd
+tail_mean(2) = sort_ens(ens_size) - dist_for_unit_sd * prior_sd
+
+! If the distribution is bounded, still want 1 / (ens_size + 1) in outer regions
+! Put an amplitude term (greater than 1) in front of the tail normals 
+! Amplitude is 1 if there are no bounds, so start with that
+prior_tail_amp = 1.0_r8
+
+! How much mass is outside the bounds? None if there are no bounds
+prior_bound_mass(1) = 0.0_r8
+prior_bound_mass(2) = 0.0_r8
+
+! WARNING: NEED TO DO SOMETHING TO AVOID CASES WHERE THE BOUND AND THE SMALLEST ENSEMBLE ARE VERY CLOSE/SAME
+base_prior_prob = 1.0_r8 / (ens_size + 1.0_r8)
+if(is_bounded(1)) then
+   ! Compute the CDF at the bounds
+   bound_quantile = norm_cdf(bound(1), tail_mean(1), tail_sd(1))
+   if(abs(base_prior_prob - bound_quantile) < uniform_threshold) then
+      ! If bound and ensemble member are too close, do uniform approximation
+      do_uniform_tail(1) = .true.
+   else
+      do_uniform_tail(1) = .false.
+      ! Prior tail amplitude is  ratio of original probability to that retained in tail after bounding
+      prior_tail_amp(1) = base_prior_prob / (base_prior_prob - bound_quantile)
+      prior_bound_mass(1) = prior_tail_amp(1) * bound_quantile
+   endif
+endif
+
+if(is_bounded(2)) then
+   ! Compute the CDF at the bounds
+   bound_quantile = norm_cdf(bound(2), tail_mean(2), tail_sd(2))
+   if(abs(base_prior_prob - (1.0_r8 - bound_quantile)) < uniform_threshold) then
+      ! If bound and ensemble member are too close, do uniform approximation
+      do_uniform_tail(2) = .true.
+   else
+      do_uniform_tail(2) = .false.
+      ! Numerical concern, if ensemble is close to bound amplitude can become unbounded? Use inverse.
+      prior_tail_amp(2) = base_prior_prob / (base_prior_prob - (1.0_r8 - bound_quantile))
+      ! Compute amount of mass in prior tail normal that is beyond the bound
+      prior_bound_mass(2) = prior_tail_amp(2) * (1.0_r8 - bound_quantile)
+   endif
+endif
+
+! To reduce code complexity, use a subroutine to find the update ensembles with this info
+call find_bounded_norm_rhf_post(sort_ens, ens_size, post_weight, tail_mean, tail_sd, &
+   prior_tail_amp, bound, is_bounded, prior_bound_mass, do_uniform_tail, sort_post)
+
+end subroutine ens_increment_bounded_norm_rhf
+
+
+
+subroutine find_bounded_norm_rhf_post(ens, ens_size, post_weight, tail_mean, &
+   tail_sd, prior_tail_amp, bound, is_bounded, prior_bound_mass, do_uniform_tail, sort_post)
+!------------------------------------------------------------------------
+! Modifying code to make a more general capability top support bounded rhf
+integer,  intent(in)  :: ens_size
+real(r8), intent(in)  :: ens(ens_size)
+real(r8), intent(in)  :: post_weight(ens_size + 1)
+real(r8), intent(in)  :: tail_mean(2)
+real(r8), intent(in)  :: tail_sd(2)
+real(r8), intent(in)  :: prior_tail_amp(2)
+real(r8), intent(in)  :: bound(2)
+logical,  intent(in)  :: is_bounded(2)
+real(r8), intent(in)  :: prior_bound_mass(2)
+logical,  intent(in)  :: do_uniform_tail(2)
+real(r8), intent(out) :: sort_post(ens_size)
+
+! Given a sorted set of points that bound rhf intervals and a 
+! posterior weight for each interval, find an updated ensemble. 
+! The tail mean and sd are dimensioned (2), first for the left tail, then for the right tail.
+! Allowing the sd to be different could allow a Gaussian likelihood tail to be supported.
+! The distribution on either side may be bounded and the bound is provided if so. The 
+! distribution on the tails is a doubly truncated normal. The inverse of the posterior amplitude
+! for the outermost regions is passed to minimize the possibility of overflow.
+
+real(r8) :: cumul_mass(0:ens_size + 1), umass, target_mass
+real(r8) :: smallest_ens_mass, largest_ens_mass, post_tail_amp(2), post_bound_mass(2)
+integer  :: i, j, lowest_box
+
+! MUCH MORE NUMERICAL ANALYSIS IS  NEEDED FOR THE QCEF ALGORITHMS
+
+! The posterior weight is already normalized here, see obs_increment_bounded_norm_rhf
+! May want to move the weight normalization to this subroutine
+
+! Compute the posterior tail amplitudes and amount of mass outside the tail normals
+if(.not. do_uniform_tail(1)) then
+   ! Ratio is ratio of posterior weight to prior weight (which is 1 / (N + 1)); multiply by N + 1
+   post_tail_amp(1) = prior_tail_amp(1) * post_weight(1) * (ens_size + 1)
+   ! Compute the amount of mass outside the tail normals
+   post_bound_mass(1) = prior_bound_mass(1) * post_weight(1) * (ens_size + 1)
+endif
+
+if(.not. do_uniform_tail(2)) then
+   post_tail_amp(2) = prior_tail_amp(2) * post_weight(ens_size + 1) * (ens_size + 1)
+   post_bound_mass(2) = prior_bound_mass(2) * post_weight(ens_size + 1) * (ens_size + 1)
+endif
+
+! Find cumulative posterior probability mass at each box boundary
+cumul_mass(0) = 0.0_r8
+do i = 1, ens_size + 1
+   cumul_mass(i) = cumul_mass(i - 1) + post_weight(i)
+end do
+
+! This reduces the impact of possible round-off errors on the cumulative mass
+cumul_mass = cumul_mass / cumul_mass(ens_size + 1)
+
+! Begin internal box search at bottom of lowest box, update for efficiency
+lowest_box = 1
+
+! Find each new ensemble member's location
+do i = 1, ens_size
+   ! Each update ensemble member has 1/(ens_size+1) mass before it
+   umass = (1.0_r8 * i) / (ens_size + 1.0_r8)
+
+   !--------------------------------------------------------------------------
+   ! If it is in the inner or outer range have to use normal tails
+   if(umass < cumul_mass(1)) then
+      ! It's in the left tail
+
+      ! If the bound and the smallest ensemble member are identical then any posterior 
+      ! in the lower interval is set to the value of the smallest ensemble member. 
+      if(do_uniform_tail(1) .and. is_bounded(1)) then
+         sort_post(i) = bound(1) + (umass / cumul_mass(1)) * (ens(1) - bound(1))
+      else
+
+         ! Target quantile is lower bound quantile plus umass
+         target_mass = post_bound_mass(1) + umass
+         call weighted_norm_inv(post_tail_amp(1), tail_mean(1), tail_sd(1), target_mass, sort_post(i))
+
+         ! If posterior is less than bound, set it to bound. (Only possible thru roundoff).
+         if(is_bounded(1) .and. sort_post(i) < bound(1)) then
+            ! Informative message for now can be turned off when code is mature
+            write(*, *) 'SMALLER THAN BOUND', i, sort_post(i), bound(1)
+         endif
+         if(is_bounded(1)) sort_post(i) = max(sort_post(i), bound(1))
+
+         ! It might be possible to get a posterior from the tail that exceeds the smallest 
+         ! prior ensemble member since the cdf and the inverse cdf are not exactly inverses. 
+         ! This has not been observed and is not obviously problematic.
+      endif
+
+   !--------------------------------------------------------------------------
+   else if(umass > cumul_mass(ens_size)) then
+      ! It's in the right tail; will work coming in from the right using symmetry of tail normal
+      if(do_uniform_tail(2) .and. is_bounded(2)) then
+         sort_post(i) = ens(ens_size) + &
+            (umass - cumul_mass(ens_size)) / (1.0_r8 - cumul_mass(ens_size)) * (bound(2) - ens(ens_size))
+      else
+         ! Target quantile distance from the upper bound; will come in from below
+         target_mass = post_bound_mass(2) + (1.0_r8 - umass)
+         ! Unbouded temporary for now
+         call weighted_norm_inv(post_tail_amp(2), tail_mean(2), tail_sd(2), target_mass, sort_post(i))
+         ! Coming in from the right, use symmetry after pretending its on left
+         sort_post(i) = tail_mean(2) + (tail_mean(2) - sort_post(i))
+
+        ! If post is larger than bound, set it to bound. (Only possible thru roundoff).
+         if(is_bounded(2) .and. sort_post(i) > bound(2)) then
+            write(*, *) 'BIGGER THAN BOUND', i, sort_post(i), bound(2)
+         endif
+         if(is_bounded(2)) sort_post(i) = min(sort_post(i), bound(2))
+      endif
+
+   !--------------------------------------------------------------------------
+   else
+      ! In one of the inner uniform boxes.
+      FIND_BOX:do j = lowest_box, ens_size - 1
+         ! Find the box that this mass is in
+         if(umass >= cumul_mass(j) .and. umass <= cumul_mass(j + 1)) then
+
+            ! Only supporting rectangular quadrature here: Linearly interpolate in mass
+            sort_post(i) = ens(j) + ((umass - cumul_mass(j)) / &
+               (cumul_mass(j+1) - cumul_mass(j))) * (ens(j + 1) - ens(j))
+            ! Don't need to search lower boxes again
+            lowest_box = j
+            exit FIND_BOX
+         end if
+      end do FIND_BOX
+   endif
+end do
+
+end subroutine find_bounded_norm_rhf_post
+
 
 
 
@@ -2187,130 +2647,6 @@ end function cov_and_impact_factors
 
 !------------------------------------------------------------------------
 
-function norm_cdf(x_in, mean, sd)
-
-! Approximate cumulative distribution function for normal
-! with mean and sd evaluated at point x_in
-! Only works for x>= 0.
-
-real(r8)             :: norm_cdf
-real(r8), intent(in) :: x_in, mean, sd
-
-real(digits12) :: x, p, b1, b2, b3, b4, b5, t, density, nx
-
-! Convert to a standard normal
-nx = (x_in - mean) / sd
-
-x = abs(nx)
-
-
-! Use formula from Abramowitz and Stegun to approximate
-p = 0.2316419_digits12
-b1 = 0.319381530_digits12
-b2 = -0.356563782_digits12
-b3 = 1.781477937_digits12
-b4 = -1.821255978_digits12
-b5 = 1.330274429_digits12
-
-t = 1.0_digits12 / (1.0_digits12 + p * x)
-
-density = (1.0_digits12 / sqrt(2.0_digits12 * PI)) * exp(-x*x / 2.0_digits12)
-
-norm_cdf = 1.0_digits12 - density * &
-   ((((b5 * t + b4) * t + b3) * t + b2) * t + b1) * t
-
-if(nx < 0.0_digits12) norm_cdf = 1.0_digits12 - norm_cdf
-
-!write(*, *) 'cdf is ', norm_cdf
-
-end function norm_cdf
-
-
-!------------------------------------------------------------------------
-
-subroutine weighted_norm_inv(alpha, mean, sd, p, x)
-
-! Find the value of x for which the cdf of a N(mean, sd) multiplied times
-! alpha has value p.
-
-real(r8), intent(in)  :: alpha, mean, sd, p
-real(r8), intent(out) :: x
-
-real(r8) :: np
-
-! Can search in a standard normal, then multiply by sd at end and add mean
-! Divide p by alpha to get the right place for weighted normal
-np = p / alpha
-
-! Find spot in standard normal
-call norm_inv(np, x)
-
-! Add in the mean and normalize by sd
-x = mean + x * sd
-
-end subroutine weighted_norm_inv
-
-
-!------------------------------------------------------------------------
-
-subroutine norm_inv(p, x)
-
-real(r8), intent(in)  :: p
-real(r8), intent(out) :: x
-
-! normal inverse
-! translate from http://home.online.no/~pjacklam/notes/invnorm
-! a routine written by john herrero
-
-real(r8) :: p_low,p_high
-real(r8) :: a1,a2,a3,a4,a5,a6
-real(r8) :: b1,b2,b3,b4,b5
-real(r8) :: c1,c2,c3,c4,c5,c6
-real(r8) :: d1,d2,d3,d4
-real(r8) :: q,r
-a1 = -39.69683028665376_digits12
-a2 =  220.9460984245205_digits12
-a3 = -275.9285104469687_digits12
-a4 =  138.357751867269_digits12
-a5 = -30.66479806614716_digits12
-a6 =  2.506628277459239_digits12
-b1 = -54.4760987982241_digits12
-b2 =  161.5858368580409_digits12
-b3 = -155.6989798598866_digits12
-b4 =  66.80131188771972_digits12
-b5 = -13.28068155288572_digits12
-c1 = -0.007784894002430293_digits12
-c2 = -0.3223964580411365_digits12
-c3 = -2.400758277161838_digits12
-c4 = -2.549732539343734_digits12
-c5 =  4.374664141464968_digits12
-c6 =  2.938163982698783_digits12
-d1 =  0.007784695709041462_digits12
-d2 =  0.3224671290700398_digits12
-d3 =  2.445134137142996_digits12
-d4 =  3.754408661907416_digits12
-p_low  = 0.02425_digits12
-p_high = 1_digits12 - p_low
-! Split into an inner and two outer regions which have separate fits
-if(p < p_low) then
-   q = sqrt(-2.0_digits12 * log(p))
-   x = (((((c1*q + c2)*q + c3)*q + c4)*q + c5)*q + c6) / &
-      ((((d1*q + d2)*q + d3)*q + d4)*q + 1.0_digits12)
-else if(p > p_high) then
-   q = sqrt(-2.0_digits12 * log(1.0_digits12 - p))
-   x = -(((((c1*q + c2)*q + c3)*q + c4)*q + c5)*q + c6) / &
-      ((((d1*q + d2)*q + d3)*q + d4)*q + 1.0_digits12)
-else
-   q = p - 0.5_digits12
-   r = q*q
-   x = (((((a1*r + a2)*r + a3)*r + a4)*r + a5)*r + a6)*q / &
-      (((((b1*r + b2)*r + b3)*r + b4)*r + b5)*r + 1.0_digits12)
-endif
-
-end subroutine norm_inv
-
-!------------------------------------------------------------------------
-
 subroutine set_assim_tools_trace(execution_level, timestamp_level)
  integer, intent(in) :: execution_level
  integer, intent(in) :: timestamp_level
@@ -2565,9 +2901,8 @@ subroutine get_close_obs_cached(gc_obs, base_obs_loc, base_obs_type, &
 type(get_close_type),          intent(in)  :: gc_obs
 type(location_type),           intent(inout) :: base_obs_loc, my_obs_loc(:)
 integer,                       intent(in)  :: base_obs_type, my_obs_kind(:), my_obs_type(:)
-integer,                       intent(out) :: num_close_obs
-integer,                       intent(inout) :: close_obs_ind(:)
-real(r8),                      intent(inout) :: close_obs_dist(:)
+integer,                       intent(out) :: num_close_obs, close_obs_ind(:)
+real(r8),                      intent(out) :: close_obs_dist(:)
 type(ensemble_type),           intent(in)  :: ens_handle
 type(location_type), intent(inout) :: last_base_obs_loc
 integer, intent(inout) :: last_num_close_obs
@@ -2608,9 +2943,8 @@ type(get_close_type),          intent(in)    :: gc_state
 type(location_type),           intent(inout) :: base_obs_loc, my_state_loc(:)
 integer,                       intent(in)    :: base_obs_type, my_state_kind(:)
 integer(i8),                   intent(in)    :: my_state_indx(:)
-integer,                       intent(out)   :: num_close_states
-integer,                       intent(inout) :: close_state_ind(:)
-real(r8),                      intent(inout) :: close_state_dist(:)
+integer,                       intent(out)   :: num_close_states, close_state_ind(:)
+real(r8),                      intent(out)   :: close_state_dist(:)
 type(ensemble_type),           intent(in)    :: ens_handle
 type(location_type), intent(inout) :: last_base_states_loc
 integer, intent(inout) :: last_num_close_states
@@ -2665,6 +2999,8 @@ select case (filter_kind)
    msgstring = 'Boxcar'
  case (8)
    msgstring = 'Rank Histogram Filter'
+ case (101)
+   msgstring = 'Bounded Rank Histogram Filter'
  case default
    call error_handler(E_ERR, 'assim_tools_init:', 'illegal filter_kind value, valid values are 1-8', &
                       source)

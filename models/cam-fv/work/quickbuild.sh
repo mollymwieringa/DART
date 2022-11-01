@@ -11,7 +11,6 @@ source "$DART"/build_templates/buildfunctions.sh
 
 MODEL=cam-fv
 LOCATION=threed_sphere
-EXTRA=$DART/models/cam-common-code
 
 
 programs=(
