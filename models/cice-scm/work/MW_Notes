@@ -1,0 +1,18 @@
+Working on adding cice-scm to Jeff's branch 
+
+Successfully built with ignoring the preprocess code in Chris' branch and instead using the namelist compiled by Jeff's. 
+I think we're probably good to go trying to do some assimilations, given where in the code the edits need to be made (will need to rebuild cice-csm, likely).
+
+Okay, successfully built cice-scm within Jeff's probit branch. What's next? 
+    - finishing scripts for running assimilation cases (with Chris' code)
+    - adapting scripts for running assimilation cases (with Jeff's code) 
+
+    - testing assimilations for Chris' code (experiment replication)
+    - testing assimilations for Jeff's code (new stuff)
+
+I've run a spinup case and an free ensemble that can be used for both and I have all the necessary observations 
+    - should confirm with Jeff what the error values in the obs_seqs are in the context of different distributions (I think assuming the OED is still normal...?)
+
+1. Switch the compiler type in build_templates
+2. Copy over the mkmf templates and path names files and quickbuild script etc for cice-scm to model directory
+3. Add quantile_distributions_mod.f90 to (filter, integrate_model, perfect_model_obs) path_names files 

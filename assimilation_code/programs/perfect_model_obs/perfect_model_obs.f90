@@ -557,7 +557,7 @@ AdvanceTime: do
          ! If observation is not being evaluated or assimilated, skip it
          ! Ends up setting a 1000 qc field so observation is not used again.
          if( qc_ens_handle%vars(i, 1) == 0 ) then
-
+         
             ! Get the information for generating error sample for this observation
             call obs_error_info(obs_def, error_variance, bounded, bounds)
 

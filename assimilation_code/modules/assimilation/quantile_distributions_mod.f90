@@ -37,7 +37,6 @@ character(len=*), parameter :: source = 'quantile_distributions_mod.f90'
 contains
 
 !------------------------------------------------------------------------
-
 subroutine convert_all_to_probit(ens_size, num_vars, state_ens, prior_distribution_type, &
    p, probit_ens, use_input_p, bounded, bounds)
 
