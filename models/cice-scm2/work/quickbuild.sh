@@ -34,6 +34,7 @@ model_programs=(
 )
 
 model_serial_programs=(
+dart_to_cice
 )
 
 # quickbuild arguments
