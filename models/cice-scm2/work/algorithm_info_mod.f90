@@ -10,8 +10,14 @@ use obs_def_mod, only : obs_def_type, get_obs_def_type_of_obs, get_obs_def_error
 use obs_kind_mod, only : get_quantity_for_type_of_obs
 
 ! Get the QTY definitions that are needed (aka kind)
+<<<<<<< HEAD
 use obs_kind_mod, only : QTY_SEAICE_CONCENTR, QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
                         QTY_SEAICE_AGREG_CONCENTR, QTY_SEAICE_AGREG_THICKNESS
+=======
+use obs_kind_mod, only : QTY_SEAICE_VOLUME, QTY_SEAICE_CONCENTR, QTY_SEAICE_SNOWVOLUME, &
+                        QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_CONCENTR, QTY_SEAICE_AGREG_FREEBOARD
+! NOTE: Sadly, the QTY itself is not sufficient for the POWER because there is additional metadata
+>>>>>>> 05298f65b81e43dab591a302c2953fe88647043f
 
 implicit none
 private
@@ -52,6 +58,7 @@ obs_kind = get_quantity_for_type_of_obs(obs_type)
 error_variance = get_obs_def_error_variance(obs_def)
 
 ! Set the observation error details for each type of quantity
+<<<<<<< HEAD
 if(obs_kind == QTY_SEAICE_CONCENTR) then
    bounded(1) = .true.;     bounded(2) = .true.
    bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
@@ -70,6 +77,19 @@ elseif(obs_kind == QTY_SEAICE_AGREG_THICKNESS) then
 else
    write(*, *) 'Illegal obs_kind in obs_error_info'
    stop
+=======
+if(obs_kind == QTY_SEAICE_AGREG_CONCENTR) then
+   bounded(1) = .true.;     bounded(2) = .true.
+   bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
+elseif(obs_kind == QTY_SEAICE_AGREG_THICKNESS) then
+   bounded(1) = .true.;     bounded(2) = .false.
+   bounds(1) = 0.0_r8;
+elseif(obs_kind == QTY_SEAICE_AGREG_FREEBOARD) then
+   bounded(1) = .true.;     bounded(2) = .false.
+   bounds(1) = 0.0_r8;
+else
+   bounded = .false.
+>>>>>>> 05298f65b81e43dab591a302c2953fe88647043f
 endif
 
 end subroutine obs_error_info
@@ -113,6 +133,7 @@ real(r8), intent(out) :: bounds(2)
 if(is_inflation) then
    ! Case for inflation transformation
    if(kind == QTY_SEAICE_CONCENTR) then
+<<<<<<< HEAD
       dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
@@ -135,10 +156,27 @@ if(is_inflation) then
    else
       write(*, *) 'Illegal obs_kind in obs_error_info'
       stop
+=======
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
+   elseif(kind == QTY_SEAICE_VOLUME) then
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8;
+   elseif(kind == QTY_SEAICE_SNOWVOLUME) then
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8;
+   else
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded = .false.
+>>>>>>> 05298f65b81e43dab591a302c2953fe88647043f
    endif
 elseif(is_state) then
    ! Case for state variable priors
    if(kind == QTY_SEAICE_CONCENTR) then
+<<<<<<< HEAD
       dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
@@ -161,10 +199,27 @@ elseif(is_state) then
    else
       write(*, *) 'Illegal obs_kind in obs_error_info'
       stop
+=======
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
+   elseif(kind == QTY_SEAICE_VOLUME) then
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8;
+   elseif(kind == QTY_SEAICE_SNOWVOLUME) then
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8;
+   else
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded = .false.
+>>>>>>> 05298f65b81e43dab591a302c2953fe88647043f
    endif
 else
    ! This case is for observation (extended state) priors
    if(kind == QTY_SEAICE_CONCENTR) then
+<<<<<<< HEAD
       dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
@@ -187,6 +242,22 @@ else
    else
       write(*, *) 'Illegal obs_kind in obs_error_info'
       stop
+=======
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
+   elseif(kind == QTY_SEAICE_VOLUME) then
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8;
+   elseif(kind == QTY_SEAICE_SNOWVOLUME) then
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8;
+   else
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded = .false.
+>>>>>>> 05298f65b81e43dab591a302c2953fe88647043f
    endif
 endif
 
@@ -210,6 +281,7 @@ real(r8), intent(out) :: bounds(2)
 ! This example is designed to reproduce the squared forward operator results from paper
 
 ! Set the observation increment details for each type of quantity
+<<<<<<< HEAD
 if(obs_kind == QTY_SEAICE_CONCENTR) then
    filter_kind = 101
    bounded(1) = .true.;    bounded(2) = .true.
@@ -235,6 +307,27 @@ else
    stop
 endif
 
+=======
+if(obs_kind == QTY_SEAICE_AGREG_CONCENTR) then
+   filter_kind = 101
+   bounded(1) = .true.;     bounded(2) = .true.
+   bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
+elseif(obs_kind == QTY_SEAICE_AGREG_THICKNESS) then
+   filter_kind = 101
+   bounded(1) = .true.;     bounded(2) = .false.
+   bounds(1) = 0.0_r8;
+elseif(obs_kind == QTY_SEAICE_AGREG_FREEBOARD) then
+   filter_kind = 101
+   bounded(1) = .true.;     bounded(2) = .false.
+   bounds(1) = 0.0_r8;
+else
+   filter_kind = 101
+   bounded = .false.
+endif
+
+! HK you are overwritting filter kind in the if statement with this:
+filter_kind = 101
+>>>>>>> 05298f65b81e43dab591a302c2953fe88647043f
 
 ! Default settings for now for Icepack and tracer model tests
 sort_obs_inc = .false.
