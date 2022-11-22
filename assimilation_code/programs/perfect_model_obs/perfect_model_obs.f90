@@ -23,8 +23,10 @@ use obs_sequence_mod,     only : read_obs_seq, obs_type, obs_sequence_type,     
                                  delete_seq_tail, destroy_obs, destroy_obs_sequence
                                  
 
-use      obs_def_mod,     only : obs_def_type, get_obs_def_error_variance, get_obs_def_time
+use      obs_def_mod,     only : obs_def_type, get_obs_def_error_variance, get_obs_def_time, &
+                                 get_obs_def_type_of_obs
 use    obs_model_mod,     only : move_ahead, advance_state, set_obs_model_trace
+use    obs_kind_mod, only : get_quantity_for_type_of_obs
 use  assim_model_mod,     only : static_init_assim_model, get_model_size,                    &
                                  get_initial_condition
    
@@ -60,6 +62,8 @@ use distributed_state_mod, only : create_state_window, free_state_window
 use forward_operator_mod, only : get_expected_obs_distrib_state
 
 use mpi_utilities_mod,    only : my_task_id
+
+use algorithm_info_mod,   only : obs_error_info
 
 implicit none
 
@@ -106,6 +110,10 @@ character(len=256) :: input_state_files(MAX_NUM_DOMS)  = '',               &
                       obs_seq_in_file_name            = 'obs_seq.in',      &
                       obs_seq_out_file_name           = 'obs_seq.out',     &
                       adv_ens_command                 = './advance_model.csh'
+
+! Turn on bounded normal observation error if true. Only used for the paper case 
+! with bounded square observations.
+logical :: DO_BOUNDED_NORMAL_OBS_ERROR = .false.
 
 namelist /perfect_model_obs_nml/ read_input_state_from_file, write_output_state_to_file, &
                                  init_time_days, init_time_seconds, async,          &
@@ -171,6 +179,10 @@ type(file_info_type) :: file_info_true
 
 character(len=256), allocatable :: input_filelist(:), output_filelist(:), true_state_filelist(:)
 integer :: nfilesin, nfilesout
+
+! Storage for bounded error 
+logical :: bounded(2)
+real(r8) :: bounds(2), error_variance
 
 ! Initialize all modules used that require it
 call perfect_initialize_modules_used()
@@ -539,8 +551,37 @@ AdvanceTime: do
          ! If observation is not being evaluated or assimilated, skip it
          ! Ends up setting a 1000 qc field so observation is not used again.
          if( qc_ens_handle%vars(i, 1) == 0 ) then
-            obs_value(1) = random_gaussian(random_seq, true_obs(1), &
-               sqrt(get_obs_def_error_variance(obs_def)))
+
+            ! Get the information for generating error sample for this observation
+            call obs_error_info(obs_def, error_variance, bounded, bounds)
+
+            ! Capability to do a bounded normal error
+            if(bounded(1) .and. bounded(2)) then
+               ! Bounds on both sides
+               obs_value(1) = bounds(1) - 1.0_r8
+               do while(obs_value(1) < bounds(1) .or. obs_value(1) > bounds(2))
+                  obs_value(1) = random_gaussian(random_seq, true_obs(1), &
+                     sqrt(error_variance))
+               end do
+            elseif(bounded(1) .and. .not. bounded(2)) then
+               ! Bound on lower side
+               obs_value(1) = bounds(1) - 1.0_r8
+               do while(obs_value(1) < bounds(1))
+                  obs_value(1) = random_gaussian(random_seq, true_obs(1), &
+                     sqrt(error_variance))
+               end do
+            elseif(.not. bounded(1) .and. bounded(2)) then
+               ! Bound on upper side
+               obs_value(1) = bounds(2) + 1.0_r8
+               do while(obs_value(1) > bounds(1))
+                  obs_value(1) = random_gaussian(random_seq, true_obs(1), &
+                     sqrt(error_variance))
+               end do
+            else
+            ! No bounds, regular old normal distribution
+               obs_value(1) = random_gaussian(random_seq, true_obs(1), &
+                  sqrt(error_variance))
+            endif
 
             ! FIX ME SPINT: if the foward operater passed can we directly set the
             ! qc status?
