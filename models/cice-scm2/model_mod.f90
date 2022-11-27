@@ -88,6 +88,21 @@ use          obs_kind_mod, only : QTY_SEAICE_AGREG_CONCENTR  , &
                                   QTY_SEAICE_FY              , &
                                   QTY_SEAICE_AGREG_FY        , &
                                   QTY_SEAICE_AGREG_SURFACETEMP,&
+                                  QTY_SEAICE_VICE01          , &
+                                  QTY_SEAICE_VICE02          , &
+                                  QTY_SEAICE_VICE03          , &
+                                  QTY_SEAICE_VICE04          , &
+                                  QTY_SEAICE_VICE05          , &
+                                  QTY_SEAICE_VSNO01          , &
+                                  QTY_SEAICE_VSNO02          , &
+                                  QTY_SEAICE_VSNO03          , &
+                                  QTY_SEAICE_VSNO04          , &
+                                  QTY_SEAICE_VSNO05          , &
+                                  QTY_SEAICE_AICE01          , &
+                                  QTY_SEAICE_AICE02          , &
+                                  QTY_SEAICE_AICE03          , &
+                                  QTY_SEAICE_AICE04          , &
+                                  QTY_SEAICE_AICE05          , &
                                   get_index_for_quantity     , &
                                   get_name_for_quantity
 
@@ -136,7 +151,7 @@ type(location_type), allocatable :: state_loc(:)  ! state locations, compute onc
 type(time_type) :: assimilation_time_step 
 
 ! DART state vector contents are specified in the input.nml:&model_nml namelist.
-integer, parameter :: max_state_variables = 10
+integer, parameter :: max_state_variables = 15
 integer, parameter :: num_state_table_columns = 3
 character(len=NF90_MAX_NAME) :: variable_table( max_state_variables, num_state_table_columns )
 integer :: state_kinds_list( max_state_variables )
@@ -480,7 +495,25 @@ SELECT CASE (obs_type)
       base_offset = cat_index
       set_obstype = obs_type
       cat_signal = 1 ! now same as boring 2d field
-  CASE DEFAULT
+   CASE ( QTY_SEAICE_VICE01    , &  
+          QTY_SEAICE_VICE02    , &
+          QTY_SEAICE_VICE03    , &
+          QTY_SEAICE_VICE04    , &
+          QTY_SEAICE_VICE05    , &
+          QTY_SEAICE_VSNO01    , &
+          QTY_SEAICE_VSNO02    , &
+          QTY_SEAICE_VSNO03    , &
+          QTY_SEAICE_VSNO04    , &
+          QTY_SEAICE_VSNO05    , &
+          QTY_SEAICE_AICE01    , &
+          QTY_SEAICE_AICE02    , &
+          QTY_SEAICE_AICE03    , &
+          QTY_SEAICE_AICE04    , &
+          QTY_SEAICE_AICE05    )
+      cat_signal = 1
+      base_offset = get_index_start(domain_id, get_varid_from_kind(obs_type))
+      set_obstype = obs_type
+   CASE DEFAULT
       ! Not a legal type for interpolation, return istatus error
       istatus = 15
       return
@@ -549,14 +582,17 @@ else if (cat_signal == -3 ) then
 else
     call lon_lat_interpolate(state_handle, ens_size, base_offset, llon, llat, set_obstype, cat_signal, expected_obs, istatus)
     
-      if (any(expected_obs<0.0))then
-      print*,'obstype SIC expected concs:',expected_obs
-      print*,'SIC sic negative lat lon:',llat,llon
-      endif
-      if (any(expected_obs>1.0))then
-      print*,'obstype SIC expected concs:',expected_obs
-      print*,'SIC sic positive lat lon:',llat,llon
-      endif
+  print*,'obstype ' , set_obstype,  expected_obs(1:5)  ! expected_obs is the prior for this variable
+  print*,'base_offset ' , base_offset
+  
+!      if (any(expected_obs<0.0))then
+!      print*,'obstype SIC expected concs:',expected_obs
+!      print*,'SIC sic negative lat lon:',llat,llon
+!      endif
+!      if (any(expected_obs>1.0))then
+!      print*,'obstype SIC expected concs:',expected_obs
+!      print*,'SIC sic positive lat lon:',llat,llon
+!      endif
 endif
 
 if (cat_signal == -1) then
@@ -618,6 +654,42 @@ else if (var_type == 15) then
   e = 2
 else if (var_type == 16) then
   e = 3
+else if (var_type == 5) then
+  e = 4
+else if (var_type == 6) then
+  e = 5
+else if (var_type == 45) then
+  e = 4
+else if (var_type == 49) then
+  e = 1
+else if (var_type == 50) then
+  e = 2
+else if (var_type == 51) then
+  e = 3
+else if (var_type == 52) then
+  e = 4
+else if (var_type == 53) then
+  e = 5
+else if (var_type == 54) then
+  e = 6
+else if (var_type == 55) then
+  e = 7
+else if (var_type == 56) then
+  e = 8
+else if (var_type == 57) then
+  e = 9
+else if (var_type == 58) then
+  e = 10
+else if (var_type == 59) then
+  e = 11
+else if (var_type == 60) then
+  e = 12
+else if (var_type == 61) then
+  e = 13
+else if (var_type == 62) then
+  e = 14
+else if (var_type == 63) then
+  e = 15
 endif
 if ( cat_signal < 1 )  then
    Niterations = Ncat ! only iterate if aggregating over all types

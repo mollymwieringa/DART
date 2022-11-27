@@ -219,6 +219,12 @@ do n=1,NCAT
     if (vicen(n) == 0.0_r8) then
       vicen(n) = aicen(n)*hcat_midpoint(n)
     endif
+    if (vsnon(n) > 0.0_r8 .and. vsnon_original(n) == 0.0_r8) then
+      Si0new = sss - dSin0_frazil
+      Ti = min(liquidus_temperature_mush(Si0new/phi_init), -0.1_r8)
+      qsno_hold = snow_enthaply(Ti)
+      qsno(:,n) = qsno_hold
+    endif
   endif
   if (aicen(n) == 0.0_r8 .and. aicen_original(n) > 0.0_r8) then
     vicen(n) = 0.0_r8
