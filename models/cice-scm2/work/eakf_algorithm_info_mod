@@ -11,7 +11,7 @@ use obs_kind_mod, only : get_quantity_for_type_of_obs
 
 ! Get the QTY definitions that are needed (aka kind)
 use obs_kind_mod, only : QTY_SEAICE_CONCENTR, QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
-                        QTY_SEAICE_AGREG_CONCENTR, QTY_SEAICE_AGREG_THICKNESS
+                        QTY_SEAICE_AGREG_CONCENTR, QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD
 
 implicit none
 private
@@ -65,6 +65,9 @@ elseif(obs_kind == QTY_SEAICE_SNOWVOLUME) then
    bounded(1) = .true.;     bounded(2) = .false.
    bounds(1) = 0.0_r8
 elseif(obs_kind == QTY_SEAICE_AGREG_THICKNESS) then
+   bounded(1) = .true.;     bounded(2) = .false.
+   bounds(1) = 0.0_r8
+elseif(obs_kind == QTY_SEAICE_AGREG_FREEBOARD) then
    bounded(1) = .true.;     bounded(2) = .false.
    bounds(1) = 0.0_r8
 else
@@ -132,6 +135,10 @@ if(is_inflation) then
       dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8
+   elseif(kind == QTY_SEAICE_AGREG_FREEBOARD) then
+      dist_type = NORMAL_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8
    else
       write(*, *) 'Illegal obs_kind in obs_error_info'
       stop
@@ -158,6 +165,10 @@ elseif(is_state) then
       dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8
+   elseif(kind == QTY_SEAICE_AGREG_FREEBOARD) then
+      dist_type = NORMAL_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8
    else
       write(*, *) 'Illegal obs_kind in obs_error_info'
       stop
@@ -181,6 +192,10 @@ else
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8
    elseif(kind == QTY_SEAICE_AGREG_THICKNESS) then
+      dist_type = NORMAL_PRIOR
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8
+   elseif(kind == QTY_SEAICE_AGREG_FREEBOARD) then
       dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8
@@ -223,6 +238,9 @@ elseif(obs_kind == QTY_SEAICE_SNOWVOLUME) then
    filter_kind = 1
    bounded(1) = .false.;    bounded(2) = .false.
 elseif(obs_kind == QTY_SEAICE_AGREG_THICKNESS) then
+   filter_kind = 1
+   bounded(1) = .false.;    bounded(2) = .false.
+elseif(obs_kind == QTY_SEAICE_AGREG_FREEBOARD) then
    filter_kind = 1
    bounded(1) = .false.;    bounded(2) = .false.
 else
