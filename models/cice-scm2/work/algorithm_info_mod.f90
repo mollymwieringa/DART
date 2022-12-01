@@ -229,7 +229,6 @@ end subroutine probit_dist_info
 
 !------------------------------------------------------------------------
 
-
 subroutine obs_inc_info(obs_kind, filter_kind, rectangular_quadrature, gaussian_likelihood_tails, &
    sort_obs_inc, spread_restoration, bounded, bounds)
 
@@ -245,7 +244,6 @@ real(r8), intent(out) :: bounds(2)
 ! This example is designed to reproduce the squared forward operator results from paper
 
 ! Set the observation increment details for each type of quantity
-
 if(obs_kind == QTY_SEAICE_AGREG_CONCENTR) then
    filter_kind = 101
    bounded(1) = .true.;     bounded(2) = .true.
