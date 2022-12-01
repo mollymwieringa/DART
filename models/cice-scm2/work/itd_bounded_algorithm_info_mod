@@ -1,0 +1,440 @@
+! DART software - Copyright UCAR. This open source software is provided
+! by UCAR, "as is", without charge, subject to all terms of use at
+! http://www.image.ucar.edu/DAReS/DART/DART_download
+
+module algorithm_info_mod
+
+use types_mod, only : r8
+
+use obs_def_mod, only : obs_def_type, get_obs_def_type_of_obs, get_obs_def_error_variance
+use obs_kind_mod, only : get_quantity_for_type_of_obs
+
+! Get the QTY definitions that are needed (aka kind)
+use obs_kind_mod, only : QTY_SEAICE_VOLUME, QTY_SEAICE_CONCENTR, QTY_SEAICE_SNOWVOLUME, &
+      QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_CONCENTR, QTY_SEAICE_AGREG_FREEBOARD, &
+      QTY_SEAICE_VICE01, QTY_SEAICE_VICE02, QTY_SEAICE_VICE03, QTY_SEAICE_VICE04, QTY_SEAICE_VICE05, &
+      QTY_SEAICE_VSNO01, QTY_SEAICE_VSNO02, QTY_SEAICE_VSNO03, QTY_SEAICE_VSNO04, QTY_SEAICE_VSNO05, &
+      QTY_SEAICE_AICE01, QTY_SEAICE_AICE02, QTY_SEAICE_AICE03, QTY_SEAICE_AICE04, QTY_SEAICE_AICE05
+
+! NOTE: Sadly, the QTY itself is not sufficient for the POWER because there is additional metadata
+
+implicit none
+private
+
+integer, parameter :: NORMAL_PRIOR = 1
+integer, parameter :: BOUNDED_NORMAL_RH_PRIOR = 2
+
+public :: obs_error_info, probit_dist_info, obs_inc_info, &
+          NORMAL_PRIOR, BOUNDED_NORMAL_RH_PRIOR
+
+! Provides routines that give information about details of algorithms for 
+! observation error sampling, observation increments, and the transformations
+! for regression and inflation in probit space. 
+! For now, it is convenient to have these in a single module since several
+! users will be developing their own problem specific versions of these
+! subroutines. This will avoid constant merge conflicts as other parts of the
+! assimilation code are updated.
+
+contains
+
+!-------------------------------------------------------------------------
+subroutine obs_error_info(obs_def, error_variance, bounded, bounds)
+
+! Computes information needed to compute error sample for this observation
+! This is called by perfect_model_obs when generating noisy obs
+type(obs_def_type), intent(in)  :: obs_def
+real(r8),           intent(out) :: error_variance
+logical,            intent(out) :: bounded(2)
+real(r8),           intent(out) :: bounds(2)
+
+integer :: obs_type, obs_kind
+integer :: ncat = 5
+real (r8) :: hin_max(0:ncat) 
+
+! Get the kind of the observation
+obs_type = get_obs_def_type_of_obs(obs_def)
+obs_kind = get_quantity_for_type_of_obs(obs_type)
+
+! Get the default error variance
+error_variance = get_obs_def_error_variance(obs_def)
+
+! Get the ice thickness category bounds
+hin_max = determine_ice_bounds(ncat)
+
+! Set the observation error details for each type of quantity
+SELECT CASE (obs_kind)
+   CASE (QTY_SEAICE_AGREG_CONCENTR, &
+         QTY_SEAICE_AICE01    , &
+         QTY_SEAICE_AICE02    , &
+         QTY_SEAICE_AICE03    , &
+         QTY_SEAICE_AICE04    , &
+         QTY_SEAICE_AICE05    )
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.0_r8
+   CASE(QTY_SEAICE_VICE01)
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(1)
+   CASE(QTY_SEAICE_VICE02)
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(2)
+   CASE(QTY_SEAICE_VICE03)
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(3)
+   CASE(QTY_SEAICE_VICE04)
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(4)
+   CASE(QTY_SEAICE_VICE05)
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0
+   CASE (QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD, &
+         QTY_SEAICE_VSNO01    , &
+         QTY_SEAICE_VSNO02    , &
+         QTY_SEAICE_VSNO03    , &
+         QTY_SEAICE_VSNO04    , &
+         QTY_SEAICE_VSNO05    )
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0_r8
+   CASE Default
+      bounded(:) = .false.
+      return
+END SELECT
+
+end subroutine obs_error_info
+
+
+!-------------------------------------------------------------------------
+
+
+subroutine probit_dist_info(kind, is_state, is_inflation, dist_type, &
+   bounded, bounds)
+
+! Computes the details of the probit transform for initial experiments
+! with Molly 
+
+integer,  intent(in)  :: kind
+logical,  intent(in)  :: is_state      ! True for state variable, false for obs
+logical,  intent(in)  :: is_inflation  ! True for inflation transform
+integer,  intent(out) :: dist_type
+logical,  intent(out) :: bounded(2)
+real(r8), intent(out) :: bounds(2)
+
+integer :: ncat = 5
+real (r8) :: hin_max(0:ncat) 
+
+hin_max = determine_ice_bounds(ncat)
+! Have input information about the kind of the state or observation being transformed
+! along with additional logical info that indicates whether this is an observation
+! or state variable and about whether the transformation is being done for inflation
+! or for regress. 
+! Need to select the appropriate transform. At present, options are NORMAL_PRIOR
+! which does nothing or BOUNDED_NORMAL_RH_PRIOR. 
+! If the BNRH is selected then information about the bounds must also be set.
+! The two dimensional logical array 'bounded' is set to false for no bounds and true
+! for bounded. the first element of the array is for the lower bound, the second for the upper.
+! If bounded is chosen, the corresponding bound value(s) must be set in the two dimensional 
+! real array 'bounds'.
+! For example, if my_state_kind corresponds to a sea ice fraction then an appropriate choice
+! would be:
+! bounded(1) = .true.;  bounded(2) = .true.
+! bounds(1)  = 0.0_r8;  bounds(2)  = 1.0_r8
+
+! In the long run, may not have to have separate controls for each of the input possibilities
+! However, for now these are things that need to be explored for science understanding
+
+if(is_inflation) then
+   ! Case for inflation transformation
+  SELECT CASE (kind)
+    CASE (QTY_SEAICE_CONCENTR  , &
+          QTY_SEAICE_AICE01    , &
+          QTY_SEAICE_AICE02    , &
+          QTY_SEAICE_AICE03    , &
+          QTY_SEAICE_AICE04    , &
+          QTY_SEAICE_AICE05    )
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.0_r8
+   CASE(QTY_SEAICE_VICE01)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(1)
+   CASE(QTY_SEAICE_VICE02)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(2)
+   CASE(QTY_SEAICE_VICE03)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(3)
+   CASE(QTY_SEAICE_VICE04)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(4)
+   CASE(QTY_SEAICE_VICE05)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0
+   CASE (QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD, &
+         QTY_SEAICE_VSNO01    , &
+         QTY_SEAICE_VSNO02    , &
+         QTY_SEAICE_VSNO03    , &
+         QTY_SEAICE_VSNO04    , &
+         QTY_SEAICE_VSNO05    )
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0_r8
+    CASE Default
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .false.
+      return
+  END SELECT
+elseif(is_state) then
+   ! Case for state variable priors
+  SELECT CASE (kind)
+    CASE (QTY_SEAICE_CONCENTR  ,&
+          QTY_SEAICE_AICE01    , &
+          QTY_SEAICE_AICE02    , &
+          QTY_SEAICE_AICE03    , &
+          QTY_SEAICE_AICE04    , &
+          QTY_SEAICE_AICE05    )
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.0_r8
+   CASE(QTY_SEAICE_VICE01)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(1)
+   CASE(QTY_SEAICE_VICE02)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(2)
+   CASE(QTY_SEAICE_VICE03)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(3)
+   CASE(QTY_SEAICE_VICE04)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(4)
+   CASE(QTY_SEAICE_VICE05)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0
+   CASE (QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD, &
+         QTY_SEAICE_VSNO01    , &
+         QTY_SEAICE_VSNO02    , &
+         QTY_SEAICE_VSNO03    , &
+         QTY_SEAICE_VSNO04    , &
+         QTY_SEAICE_VSNO05    )
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0_r8
+    CASE Default
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .false.
+      return
+  END SELECT
+else
+   ! This case is for observation (extended state) priors
+  SELECT CASE (kind)
+    CASE (QTY_SEAICE_CONCENTR  ,&
+          QTY_SEAICE_AICE01    , &
+          QTY_SEAICE_AICE02    , &
+          QTY_SEAICE_AICE03    , &
+          QTY_SEAICE_AICE04    , &
+          QTY_SEAICE_AICE05    )
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.0_r8
+   CASE(QTY_SEAICE_VICE01)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(1)
+   CASE(QTY_SEAICE_VICE02)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(2)
+   CASE(QTY_SEAICE_VICE03)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(3)
+   CASE(QTY_SEAICE_VICE04)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0
+      bounds(2) = hin_max(4)
+   CASE(QTY_SEAICE_VICE05)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0
+   CASE (QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD, &
+         QTY_SEAICE_VSNO01    , &
+         QTY_SEAICE_VSNO02    , &
+         QTY_SEAICE_VSNO03    , &
+         QTY_SEAICE_VSNO04    , &
+         QTY_SEAICE_VSNO05    )
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0_r8
+    CASE Default
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .false.
+      return
+  END SELECT
+endif
+
+end subroutine probit_dist_info
+
+!------------------------------------------------------------------------
+
+subroutine obs_inc_info(obs_kind, filter_kind, rectangular_quadrature, gaussian_likelihood_tails, &
+   sort_obs_inc, spread_restoration, bounded, bounds)
+
+integer,  intent(in)  :: obs_kind
+integer,  intent(out) :: filter_kind
+logical,  intent(out) :: rectangular_quadrature, gaussian_likelihood_tails
+logical,  intent(out) :: sort_obs_inc
+logical,  intent(out) :: spread_restoration
+logical,  intent(out) :: bounded(2)
+real(r8), intent(out) :: bounds(2)
+
+integer :: ncat = 5
+real (r8) :: hin_max(0:ncat) 
+
+hin_max = determine_ice_bounds(ncat)
+
+! Temporary approach for setting the details of how to assimilate this observation
+! This example is designed to reproduce the squared forward operator results from paper
+
+! Set the observation increment details for each type of quantity
+
+SELECT CASE (obs_kind)
+   CASE (QTY_SEAICE_CONCENTR  ,&
+         QTY_SEAICE_AGREG_CONCENTR,&
+         QTY_SEAICE_AICE01    , &
+         QTY_SEAICE_AICE02    , &
+         QTY_SEAICE_AICE03    , &
+         QTY_SEAICE_AICE04    , &
+         QTY_SEAICE_AICE05    )
+      filter_kind = 101
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.0_r8
+   CASE (QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD, &
+         QTY_SEAICE_VSNO01    , &
+         QTY_SEAICE_VSNO02    , &
+         QTY_SEAICE_VSNO03    , &
+         QTY_SEAICE_VSNO04    , &
+         QTY_SEAICE_VSNO05    )
+      filter_kind = 101
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0_r8
+   CASE(QTY_SEAICE_VICE01)
+      filter_kind = 101
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = hin_max(1)
+   CASE(QTY_SEAICE_VICE02)
+      filter_kind = 101
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = hin_max(2)
+   CASE(QTY_SEAICE_VICE03)
+      filter_kind = 101
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = hin_max(3)
+   CASE(QTY_SEAICE_VICE04) 
+      filter_kind = 101
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8;      bounds(2) = hin_max(4)
+   CASE(QTY_SEAICE_VICE05)
+      filter_kind = 101
+      bounded(1) = .true.;     bounded(2) = .false.
+      bounds(1) = 0.0_r8
+   CASE Default
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .false.
+      return
+END SELECT
+
+! Default settings for now for Icepack and tracer model tests
+sort_obs_inc = .false.
+spread_restoration = .false.
+
+! Only need to set these two for options on old RHF implementation
+! rectangular_quadrature = .true.
+! gaussian_likelihood_tails = .false.
+
+end subroutine obs_inc_info
+
+!------------------------------------------------------
+function determine_ice_bounds(ncat)
+   implicit none
+
+   !! Declarations
+   integer, intent(in) :: &
+      ncat ! number of thickness categories
+
+   real (r8), intent(out) :: &
+      hin_max(0:ncat)  ! category limits (m)
+
+   integer :: &
+      n   ! thickness category index
+
+   real (r8), parameter :: &
+      c0   = 0.0_dbl_kind, &
+      c1   = 1.0_dbl_kind, &
+      c3   = 3.0_dbl_kind, &
+      c15  = 15.0_dbl_kind, &
+
+   real (r8) :: &
+      cc1, cc2, cc3, & ! parameters for kcatbound = 0
+      x1           , &
+      rn           , & ! real(n)
+      rncat        , & ! real(ncat)
+      
+   !! Executables
+   rncat = real(ncat, kind=r8)
+   cc1 = c3/rncat
+   cc2 = c15*cc1
+   cc3 = c3
+
+   hin_max(0) = c0  
+
+   do n = 1, ncat
+      x1 = real(n-1, kind=r8) / rncat
+      hin_max(n) = hin_max(n-1) &
+                 + cc1 + cc2*(c1 + tanh(cc3*(x1-c1)))
+   enddo
+
+determine_ice_bounds = hin_max
+end function determine_ice_bounds
+
+!------------------------------------------------------------------------
+
+end module algorithm_info_mod
