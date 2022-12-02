@@ -137,12 +137,32 @@ if(is_inflation) then
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
+    CASE (QTY_SEAICE_VICE01)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 0.6_r8
+    CASE (QTY_SEAICE_VICE02)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.4_r8
+    CASE (QTY_SEAICE_VICE03)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 2.4_r8
+    CASE (QTY_SEAICE_VICE04)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 3.6_r8
+     CASE (QTY_SEAICE_VICE05)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 5.0_r8
     CASE (QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
-         QTY_SEAICE_VICE01    , &
-         QTY_SEAICE_VICE02    , &
-         QTY_SEAICE_VICE03    , &
-         QTY_SEAICE_VICE04    , &
-         QTY_SEAICE_VICE05    , &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
          QTY_SEAICE_VSNO03    , &
@@ -170,12 +190,32 @@ elseif(is_state) then
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
+    CASE (QTY_SEAICE_VICE01)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 0.6_r8
+    CASE (QTY_SEAICE_VICE02)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.4_r8
+    CASE (QTY_SEAICE_VICE03)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 2.4_r8
+    CASE (QTY_SEAICE_VICE04)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 3.6_r8
+     CASE (QTY_SEAICE_VICE05)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 5.0_r8
     CASE (QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
-         QTY_SEAICE_VICE01    , &
-         QTY_SEAICE_VICE02    , &
-         QTY_SEAICE_VICE03    , &
-         QTY_SEAICE_VICE04    , &
-         QTY_SEAICE_VICE05    , &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
          QTY_SEAICE_VSNO03    , &
@@ -203,12 +243,32 @@ else
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
+    CASE (QTY_SEAICE_VICE01)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 0.6_r8
+    CASE (QTY_SEAICE_VICE02)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.4_r8
+    CASE (QTY_SEAICE_VICE03)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 2.4_r8
+    CASE (QTY_SEAICE_VICE04)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 3.6_r8
+     CASE (QTY_SEAICE_VICE05)
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 5.0_r8
     CASE (QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
-         QTY_SEAICE_VICE01    , &
-         QTY_SEAICE_VICE02    , &
-         QTY_SEAICE_VICE03    , &
-         QTY_SEAICE_VICE04    , &
-         QTY_SEAICE_VICE05    , &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
          QTY_SEAICE_VSNO03    , &
@@ -244,24 +304,60 @@ real(r8), intent(out) :: bounds(2)
 ! This example is designed to reproduce the squared forward operator results from paper
 
 ! Set the observation increment details for each type of quantity
-if(obs_kind == QTY_SEAICE_AGREG_CONCENTR) then
-   filter_kind = 101
-   bounded(1) = .true.;     bounded(2) = .true.
-   bounds(1) = 0.0_r8;      bounds(2) = 1.0_r8
-elseif(obs_kind == QTY_SEAICE_AGREG_THICKNESS) then
-   filter_kind = 101
-   bounded(1) = .true.;     bounded(2) = .false.
-   bounds(1) = 0.0_r8;
-elseif(obs_kind == QTY_SEAICE_AGREG_FREEBOARD) then
-   filter_kind = 101
-   bounded(1) = .true.;     bounded(2) = .false.
-   bounds(1) = 0.0_r8;
-else
-   filter_kind = 101
-   bounded(:) = .false.
-endif
+SELECT CASE (obs_kind)
+    CASE (QTY_SEAICE_AGREG_CONCENTR  , &
+         QTY_SEAICE_AICE01    , &
+         QTY_SEAICE_AICE02    , &
+         QTY_SEAICE_AICE03    , &
+         QTY_SEAICE_AICE04    , &
+         QTY_SEAICE_AICE05    )
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 1.0_r8
+    CASE (QTY_SEAICE_VICE01)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 0.6_r8
+    CASE (QTY_SEAICE_VICE02)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 1.4_r8
+    CASE (QTY_SEAICE_VICE03)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 2.4_r8
+    CASE (QTY_SEAICE_VICE04)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 3.6_r8
+    CASE (QTY_SEAICE_VICE05)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 5.0_r8       
+    CASE (QTY_SEAICE_AGREG_THICKNESS, &
+         QTY_SEAICE_AGREG_FREEBOARD, &
+         QTY_SEAICE_VSNO01    , &
+         QTY_SEAICE_VSNO02    , &
+         QTY_SEAICE_VSNO03    , &
+         QTY_SEAICE_VSNO04    , &
+         QTY_SEAICE_VSNO05    ) 
+       filter_kind = 101
+       bounded(1) = .true.
+       bounded(2) = .false.
+       bounds(1) = 0.0_r8;
+   CASE Default
+      filter_kind = 101
+      bounded(:) = .false.
+      return
+  END SELECT
 
-! HK you are overwritting filter kind in the if statement with this: filter_kind = 101
+! HK you are overwritting filter kind in the CASE statement with this: filter_kind = 101
 
 ! Default settings for now for Icepack and tracer model tests
 sort_obs_inc = .false.
