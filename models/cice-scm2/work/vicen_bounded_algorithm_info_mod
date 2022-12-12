@@ -143,30 +143,30 @@ if(is_inflation) then
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
     CASE (QTY_SEAICE_VICE01)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 0.64_r8
+      bounds(2) = 0.6_r8
     CASE (QTY_SEAICE_VICE02)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 1.39_r8
+      bounds(2) = 1.4_r8
     CASE (QTY_SEAICE_VICE03)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 2.47_r8
+      bounds(2) = 2.4_r8
     CASE (QTY_SEAICE_VICE04)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 4.57_r8
+      bounds(2) = 3.6_r8
      CASE (QTY_SEAICE_VICE05)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.
-      bounded(2) = .false.
+      dist_type = BETA_PRIOR
+      bounded(:) = .true.
       bounds(1) = 0.0_r8
+      bounds(2) = 5.0_r8
     CASE (QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
@@ -196,30 +196,30 @@ elseif(is_state) then
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
     CASE (QTY_SEAICE_VICE01)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 0.64_r8
+      bounds(2) = 0.6_r8
     CASE (QTY_SEAICE_VICE02)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 1.39_r8
+      bounds(2) = 1.4_r8
     CASE (QTY_SEAICE_VICE03)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 2.47_r8
+      bounds(2) = 2.4_r8
     CASE (QTY_SEAICE_VICE04)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 4.57_r8
+      bounds(2) = 3.6_r8
      CASE (QTY_SEAICE_VICE05)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.
-      bounded(2) = .false.
+      dist_type = BETA_PRIOR
+      bounded(:) = .true.
       bounds(1) = 0.0_r8
+      bounds(2) = 5.0_r8
     CASE (QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
@@ -249,30 +249,30 @@ else
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
     CASE (QTY_SEAICE_VICE01)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 0.64_r8
+      bounds(2) = 0.6_r8
     CASE (QTY_SEAICE_VICE02)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 1.39_r8
+      bounds(2) = 1.4_r8
     CASE (QTY_SEAICE_VICE03)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 2.47_r8
+      bounds(2) = 2.4_r8
     CASE (QTY_SEAICE_VICE04)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = BETA_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
-      bounds(2) = 4.57_r8
+      bounds(2) = 3.6_r8
      CASE (QTY_SEAICE_VICE05)
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.
-      bounded(2) = .false.
+      dist_type = BETA_PRIOR
+      bounded(:) = .true.
       bounds(1) = 0.0_r8
+      bounds(2) = 5.0_r8
     CASE (QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
@@ -320,31 +320,31 @@ SELECT CASE (obs_kind)
        bounded(:) = .true.
        bounds(1) = 0.0_r8
        bounds(2) = 1.0_r8
-      CASE (QTY_SEAICE_VICE01)
-        filter_kind = 101
-        bounded(:) = .true.
-        bounds(1) = 0.0_r8
-        bounds(2) = 0.64_r8
-      CASE (QTY_SEAICE_VICE02)
-        filter_kind = 101
-        bounded(:) = .true.
-        bounds(1) = 0.0_r8
-        bounds(2) = 1.39_r8
-      CASE (QTY_SEAICE_VICE03)
-        filter_kind = 101
-        bounded(:) = .true.
-        bounds(1) = 0.0_r8
-        bounds(2) = 2.47_r8
-      CASE (QTY_SEAICE_VICE04)
-        filter_kind = 101
-        bounded(:) = .true.
-        bounds(1) = 0.0_r8
-        bounds(2) = 4.57_r8
-       CASE (QTY_SEAICE_VICE05)
-        filter_kind = 101
-        bounded(1) = .true.
-        bounded(2) = .false.
-        bounds(1) = 0.0_r8     
+    CASE (QTY_SEAICE_VICE01)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 0.6_r8
+    CASE (QTY_SEAICE_VICE02)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 1.4_r8
+    CASE (QTY_SEAICE_VICE03)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 2.4_r8
+    CASE (QTY_SEAICE_VICE04)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 3.6_r8
+    CASE (QTY_SEAICE_VICE05)
+       filter_kind = 101
+       bounded(:) = .true.
+       bounds(1) = 0.0_r8
+       bounds(2) = 5.0_r8       
     CASE (QTY_SEAICE_AGREG_THICKNESS, &
          QTY_SEAICE_AGREG_FREEBOARD, &
          QTY_SEAICE_VSNO01    , &
