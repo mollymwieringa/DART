@@ -135,14 +135,14 @@ real(r8), intent(out) :: bounds(2)
 if(is_inflation) then
    ! Case for inflation transformation
    if(kind == QTY_STATE_VARIABLE) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded = .false.
    elseif(kind == QTY_TRACER_CONCENTRATION) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
    elseif(kind == QTY_TRACER_SOURCE) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
    else
@@ -152,14 +152,14 @@ if(is_inflation) then
 elseif(is_state) then
    ! Case for state variable priors
    if(kind == QTY_STATE_VARIABLE) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded = .false.
    elseif(kind == QTY_TRACER_CONCENTRATION) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
    elseif(kind == QTY_TRACER_SOURCE) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
    else
@@ -169,14 +169,14 @@ elseif(is_state) then
 else
    ! This case is for observation (extended state) priors
    if(kind == QTY_STATE_VARIABLE) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded = .false.
    elseif(kind == QTY_TRACER_CONCENTRATION) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
    elseif(kind == QTY_TRACER_SOURCE) then
-      dist_type = BOUNDED_NORMAL_RH_PRIOR
+      dist_type = NORMAL_PRIOR
       bounded(1) = .true.;     bounded(2) = .false.
       bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
    else
@@ -211,14 +211,14 @@ real(r8), intent(inout) :: bounds(2)
 
 ! Set the observation increment details for each type of quantity
 if(obs_kind == QTY_STATE_VARIABLE) then
-   filter_kind = BOUNDED_NORMAL_RHF
+   filter_kind = EAKF
    bounded = .false.
 elseif(obs_kind == QTY_TRACER_CONCENTRATION) then
-   filter_kind = BOUNDED_NORMAL_RHF
+   filter_kind = EAKF
    bounded(1) = .true.;     bounded(2) = .false.
    bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
 elseif(obs_kind == QTY_TRACER_SOURCE) then
-   filter_kind = BOUNDED_NORMAL_RHF
+   filter_kind = EAKF
    bounded(1) = .true.;     bounded(2) = .false.
    bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
 else

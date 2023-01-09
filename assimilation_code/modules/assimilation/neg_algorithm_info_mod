@@ -84,10 +84,10 @@ error_variance = get_obs_def_error_variance(obs_def)
 if(obs_kind == QTY_STATE_VARIABLE) then
    bounded = .false.
 elseif(obs_kind == QTY_TRACER_CONCENTRATION) then
-   bounded(1) = .true.;     bounded(2) = .false.
+   bounded(1) = .false.;     bounded(2) = .true.
    bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
 elseif(obs_kind == QTY_TRACER_SOURCE) then
-   bounded(1) = .true.;     bounded(2) = .false.
+   bounded(1) = .false.;     bounded(2) = .true.
    bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
 else
    write(*, *) 'Illegal obs_kind in obs_error_info'
@@ -139,11 +139,11 @@ if(is_inflation) then
       bounded = .false.
    elseif(kind == QTY_TRACER_CONCENTRATION) then
       dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.;     bounded(2) = .false.
+      bounded(1) = .false.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
    elseif(kind == QTY_TRACER_SOURCE) then
       dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.;     bounded(2) = .false.
+      bounded(1) = .false.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
    else
       write(*, *) 'Illegal kind in obs_error_info'
@@ -156,11 +156,11 @@ elseif(is_state) then
       bounded = .false.
    elseif(kind == QTY_TRACER_CONCENTRATION) then
       dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.;     bounded(2) = .false.
+      bounded(1) = .false.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
    elseif(kind == QTY_TRACER_SOURCE) then
       dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.;     bounded(2) = .false.
+      bounded(1) = .false.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
    else
       write(*, *) 'Illegal kind in obs_error_info'
@@ -173,11 +173,11 @@ else
       bounded = .false.
    elseif(kind == QTY_TRACER_CONCENTRATION) then
       dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.;     bounded(2) = .false.
+      bounded(1) = .false.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
    elseif(kind == QTY_TRACER_SOURCE) then
       dist_type = BOUNDED_NORMAL_RH_PRIOR
-      bounded(1) = .true.;     bounded(2) = .false.
+      bounded(1) = .false.;     bounded(2) = .true.
       bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
    else
       write(*, *) 'Illegal kind in obs_error_info'
@@ -215,11 +215,11 @@ if(obs_kind == QTY_STATE_VARIABLE) then
    bounded = .false.
 elseif(obs_kind == QTY_TRACER_CONCENTRATION) then
    filter_kind = BOUNDED_NORMAL_RHF
-   bounded(1) = .true.;     bounded(2) = .false.
+   bounded(1) = .false.;     bounded(2) = .true.
    bounds(1) = 0.0_r8;      bounds(2) = 0.0_r8
 elseif(obs_kind == QTY_TRACER_SOURCE) then
    filter_kind = BOUNDED_NORMAL_RHF
-   bounded(1) = .true.;     bounded(2) = .false.
+   bounded(1) = .false.;     bounded(2) = .true.
    bounds(1) = 0.0_r8;       bounds(2) = 0.0_r8
 else
    write(*, *) 'Illegal obs_kind in obs_error_info'
