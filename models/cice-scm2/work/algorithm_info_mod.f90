@@ -63,7 +63,7 @@ error_variance = get_obs_def_error_variance(obs_def)
 
 ! Set the observation error details for each type of quantity
 SELECT CASE (obs_kind)
-   CASE (QTY_SEAICE_AGREG_CONCENTR, &
+    CASE (QTY_SEAICE_AGREG_CONCENTR, &
          QTY_SEAICE_AICE01    , &
          QTY_SEAICE_AICE02    , &
          QTY_SEAICE_AICE03    , &
@@ -72,12 +72,27 @@ SELECT CASE (obs_kind)
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
+    CASE (QTY_SEAICE_VICE01)
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 0.64_r8
+    CASE (QTY_SEAICE_VICE02)
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 1.39_r8
+    CASE (QTY_SEAICE_VICE03)
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 2.47_r8
+    CASE (QTY_SEAICE_VICE04)
+      bounded(:) = .true.
+      bounds(1) = 0.0_r8
+      bounds(2) = 4.57_r8
+     CASE (QTY_SEAICE_VICE05)
+      bounded(1) = .true.
+      bounded(2) = .false.
+      bounds(1) = 0.0_r8
    CASE (QTY_SEAICE_AGREG_THICKNESS, QTY_SEAICE_AGREG_FREEBOARD, &
-         QTY_SEAICE_VICE01    , &  
-         QTY_SEAICE_VICE02    , &
-         QTY_SEAICE_VICE03    , &
-         QTY_SEAICE_VICE04    , &
-         QTY_SEAICE_VICE05    , &
          QTY_SEAICE_VSNO01    , &
          QTY_SEAICE_VSNO02    , &
          QTY_SEAICE_VSNO03    , &

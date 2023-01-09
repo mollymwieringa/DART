@@ -109,10 +109,10 @@ real(r8) :: np
 np = p / alpha
 
 ! Find spot in standard normal
-call norm_inv(np, x)
+! call norm_inv(np, x)
 
 ! Switch to this for more accuracy at greater cost
-! call norm_inv_accurate(np, x)
+call norm_inv_accurate(np, x)
 
 ! Add in the mean and normalize by sd
 x = mean + x * sd
