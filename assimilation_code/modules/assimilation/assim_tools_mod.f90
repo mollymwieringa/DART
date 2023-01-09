@@ -76,8 +76,11 @@ use quantile_distributions_mod, only : dist_param_type, convert_to_probit, conve
 
 use normal_distribution_mod, only : norm_cdf, norm_inv, weighted_norm_inv
 
-use algorithm_info_mod, only : probit_dist_info, obs_inc_info, &
-                               NORMAL_PRIOR, BOUNDED_NORMAL_RH_PRIOR
+use algorithm_info_mod, only : probit_dist_info, obs_inc_info
+
+use gamma_distribution_mod, only : gamma_cdf, inv_gamma_cdf, gamma_shape_scale, &
+                                   gamma_gamma_prod
+                               
 
 implicit none
 private
@@ -137,6 +140,7 @@ character(len=*), parameter :: source = 'assim_tools_mod.f90'
 !  special_localization_obs_types -> Special treatment for the specified observation types
 !  special_localization_cutoffs   -> Different cutoff value for each specified obs type
 !
+logical  :: use_algorithm_info_mod          = .true.
 integer  :: filter_kind                     = 1
 real(r8) :: cutoff                          = 0.2_r8
 logical  :: sort_obs_inc                    = .false.
@@ -196,10 +200,8 @@ logical  :: only_area_adapt  = .true.
 ! compared to previous versions of this namelist item.
 logical  :: distribute_mean  = .false.
 
-! If true, observation space RHF prior is bounded below at 0
-logical :: USE_BOUNDED_RHF_OBS_PRIOR = .true.
-
-namelist / assim_tools_nml / filter_kind, cutoff, sort_obs_inc, &
+namelist / assim_tools_nml / use_algorithm_info_mod,                           &
+   filter_kind, cutoff, sort_obs_inc,                                      &
    spread_restoration, sampling_error_correction,                          &
    adaptive_localization_threshold, adaptive_cutoff_floor,                 &
    print_every_nth_obs, rectangular_quadrature, gaussian_likelihood_tails, &
@@ -207,8 +209,7 @@ namelist / assim_tools_nml / filter_kind, cutoff, sort_obs_inc, &
    special_localization_obs_types, special_localization_cutoffs,           &
    distribute_mean, close_obs_caching,                                     &
    adjust_obs_impact, obs_impact_filename, allow_any_impact_values,        &
-   convert_all_state_verticals_first, convert_all_obs_verticals_first,     &
-   USE_BOUNDED_RHF_OBS_PRIOR
+   convert_all_state_verticals_first, convert_all_obs_verticals_first
 
 !============================================================================
 
@@ -955,12 +956,29 @@ if(do_obs_inflate(inflate)) then
       prior_var  = sum((ens - prior_mean)**2) / (ens_size - 1)
 endif
 
-! The filter_kind can no longer be determined by a single namelist setting
-! Implications for sorting increments and for spread restoration need to be examined
+!--------------------------begin algorithm_info control block-----------------
+! More flexible abilities to control the observation space increments are 
+! available with this code block. It gets information about the increment method
+! for the current observation is use_algorithm_info_mod is set to true in the namelist.
 ! This is not an extensible mechanism for doing this as the number of 
 ! obs increments distributions and associated information goes up
-call obs_inc_info(obs_kind, filter_kind, rectangular_quadrature, gaussian_likelihood_tails, &
-   sort_obs_inc, spread_restoration, bounded, bounds)
+! Implications for sorting increments and for spread restoration need to be examined
+! further. 
+! Note that all but the first argument to obs_inc_info are intent(inout) so that if they
+! are not set in that routine they will remain with the namelist selected values.
+
+! Set default values for bounds information
+bounded = .false.;      bounds = 0.0_r8
+
+if(use_algorithm_info_mod) &
+   call obs_inc_info(obs_kind, filter_kind, rectangular_quadrature, gaussian_likelihood_tails, &
+      sort_obs_inc, spread_restoration, bounded, bounds)
+
+! Could add logic to check on sort being true when not needed.
+! Could also add logic to limit the use of spread_restoration to EAKF. It will fail
+! in some ugly way right now.
+
+!----------------------------end algorithm_info control block-----------------
 
 ! The first three options in the next if block of code may be inappropriate for 
 ! some more general filters; need to revisit
@@ -1010,6 +1028,8 @@ else
       call obs_increment_boxcar(ens, ens_size, obs, obs_var, obs_inc, rel_weights)
    else if(filter_kind == 8) then
       call obs_increment_rank_histogram(ens, ens_size, prior_var, obs, obs_var, obs_inc)
+   else if(filter_kind == 11) then
+      call obs_increment_gamma(ens, ens_size, prior_mean, prior_var, obs, obs_var, obs_inc)
    !--------------------------------------------------------------------------
    else if(filter_kind == 101) then
 
@@ -1059,6 +1079,48 @@ endif
 if(do_obs_inflate(inflate)) net_a = net_a * sqrt(my_cov_inflate)
 
 end subroutine obs_increment
+
+
+
+subroutine obs_increment_gamma(ens, ens_size, prior_mean, prior_var, obs, obs_var, obs_inc)
+!========================================================================
+!
+! Gamma version of obs increment. This demonstrates the updat
+
+integer,  intent(in)  :: ens_size
+real(r8), intent(in)  :: ens(ens_size), prior_mean, prior_var, obs, obs_var
+real(r8), intent(out) :: obs_inc(ens_size)
+
+real(r8) :: prior_shape, prior_scale, like_shape, like_scale, post_shape, post_scale
+real(r8) :: q(ens_size), post(ens_size)
+integer :: i
+
+! Compute the prior quantiles of each ensemble member in the prior gamma distribution
+call gamma_shape_scale(prior_mean, prior_var, prior_shape, prior_scale)
+do i = 1, ens_size
+   q(i) = gamma_cdf(ens(i), prior_shape, prior_scale) 
+end do
+
+! Compute the statistics of the continous posterior distribution
+call gamma_shape_scale(obs, obs_var, like_shape, like_scale)
+call gamma_gamma_prod(prior_shape, prior_scale, like_shape, like_scale, &
+   post_shape, post_scale)
+
+! Check for illegal values. This can occur if the distributions are getting too
+! concentrated towards the bound
+if(post_shape <= 0.0_r8) then
+   write(msgstring, *) 'Posterior gamma shape is negative ', post_shape
+   call error_handler(E_ERR, 'obs_increment_gamma', msgstring, source)
+endif
+
+! Now invert the quantiles with the posterior distribution
+do i = 1, ens_size
+   post(i) = inv_gamma_cdf(q(i), post_shape, post_scale)
+end do
+
+obs_inc = post - ens
+
+end subroutine obs_increment_gamma
 
 
 
@@ -1314,6 +1376,10 @@ prior_bound_mass(2) = 0.0_r8
 
 ! WARNING: NEED TO DO SOMETHING TO AVOID CASES WHERE THE BOUND AND THE SMALLEST ENSEMBLE ARE VERY CLOSE/SAME
 base_prior_prob = 1.0_r8 / (ens_size + 1.0_r8)
+
+! Default is that tails are not uniform
+do_uniform_tail(1:2) = .false.
+
 if(is_bounded(1)) then
    ! Compute the CDF at the bounds
    bound_quantile = norm_cdf(bound(1), tail_mean(1), tail_sd(1))
@@ -1321,7 +1387,6 @@ if(is_bounded(1)) then
       ! If bound and ensemble member are too close, do uniform approximation
       do_uniform_tail(1) = .true.
    else
-      do_uniform_tail(1) = .false.
       ! Prior tail amplitude is  ratio of original probability to that retained in tail after bounding
       prior_tail_amp(1) = base_prior_prob / (base_prior_prob - bound_quantile)
       prior_bound_mass(1) = prior_tail_amp(1) * bound_quantile
@@ -1335,7 +1400,6 @@ if(is_bounded(2)) then
       ! If bound and ensemble member are too close, do uniform approximation
       do_uniform_tail(2) = .true.
    else
-      do_uniform_tail(2) = .false.
       ! Numerical concern, if ensemble is close to bound amplitude can become unbounded? Use inverse.
       prior_tail_amp(2) = base_prior_prob / (base_prior_prob - (1.0_r8 - bound_quantile))
       ! Compute amount of mass in prior tail normal that is beyond the bound
@@ -3003,6 +3067,8 @@ select case (filter_kind)
    msgstring = 'Boxcar'
  case (8)
    msgstring = 'Rank Histogram Filter'
+ case (11)
+   msgstring = 'Gamma Filter'
  case (101)
    msgstring = 'Bounded Rank Histogram Filter'
  case default
