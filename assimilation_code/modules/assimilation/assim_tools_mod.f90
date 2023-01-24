@@ -1254,6 +1254,11 @@ call ens_increment_bounded_norm_rhf(sort_ens, piece_const_like, ens_size, prior_
 ! These are increments for sorted ensemble; convert to increments for unsorted
 do i = 1, ens_size
    obs_inc(sort_ind(i)) = sort_post(i) - ens(sort_ind(i))
+   ! It is possible, although apparently exceedingly unusual, to generate an increment
+   ! here that when added back onto the prior leads to a posterior that is greater than 
+   ! the bounds. Unclear if there is any direct way to fix this given that increments are
+   ! being passed out. It can be corrected in to_probit_bounded_normal_rh by changing the
+   ! priors to satisfy the bounds there
 end do
 
 end subroutine obs_increment_bounded_norm_rhf
