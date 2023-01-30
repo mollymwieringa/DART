@@ -285,32 +285,32 @@ else
           QTY_SEAICE_AICE03    , &
           QTY_SEAICE_AICE04    , &
           QTY_SEAICE_AICE05    )
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 1.0_r8
     CASE (QTY_SEAICE_VICE01)
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 0.64_r8
     CASE (QTY_SEAICE_VICE02)
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 1.39_r8
     CASE (QTY_SEAICE_VICE03)
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 2.47_r8
     CASE (QTY_SEAICE_VICE04)
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(:) = .true.
       bounds(1) = 0.0_r8
       bounds(2) = 4.57_r8
      CASE (QTY_SEAICE_VICE05)
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(1) = .true.
       bounded(2) = .false.
       bounds(1) = 0.0_r8
@@ -321,12 +321,12 @@ else
           QTY_SEAICE_VSNO03    , &
           QTY_SEAICE_VSNO04    , &
           QTY_SEAICE_VSNO05    )
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(1) = .true.
       bounded(2) = .false.
       bounds(1) = 0.0_r8
     CASE Default
-      dist_type = NORMAL_PRIOR
+      dist_type = BOUNDED_NORMAL_RH_PRIOR
       bounded(:) = .false.
       return
   END SELECT
@@ -364,32 +364,32 @@ SELECT CASE (obs_kind)
          QTY_SEAICE_AICE03    , &
          QTY_SEAICE_AICE04    , &
          QTY_SEAICE_AICE05    )
-       filter_kind = EAKF
+       filter_kind = BOUNDED_NORMAL_RHF
        bounded(:) = .true.
        bounds(1) = 0.0_r8
        bounds(2) = 1.0_r8
       CASE (QTY_SEAICE_VICE01)
-        filter_kind = EAKF
+        filter_kind = BOUNDED_NORMAL_RHF
         bounded(:) = .true.
         bounds(1) = 0.0_r8
         bounds(2) = 0.64_r8
       CASE (QTY_SEAICE_VICE02)
-        filter_kind = EAKF
+        filter_kind = BOUNDED_NORMAL_RHF
         bounded(:) = .true.
         bounds(1) = 0.0_r8
         bounds(2) = 1.39_r8
       CASE (QTY_SEAICE_VICE03)
-        filter_kind = EAKF
+        filter_kind = BOUNDED_NORMAL_RHF
         bounded(:) = .true.
         bounds(1) = 0.0_r8
         bounds(2) = 2.47_r8
       CASE (QTY_SEAICE_VICE04)
-        filter_kind = EAKF
+        filter_kind = BOUNDED_NORMAL_RHF
         bounded(:) = .true.
         bounds(1) = 0.0_r8
         bounds(2) = 4.57_r8
        CASE (QTY_SEAICE_VICE05)
-        filter_kind = EAKF
+        filter_kind = BOUNDED_NORMAL_RHF
         bounded(1) = .true.
         bounded(2) = .false.
         bounds(1) = 0.0_r8     
@@ -400,12 +400,12 @@ SELECT CASE (obs_kind)
          QTY_SEAICE_VSNO03    , &
          QTY_SEAICE_VSNO04    , &
          QTY_SEAICE_VSNO05    ) 
-       filter_kind = EAKF
+       filter_kind = BOUNDED_NORMAL_RHF
        bounded(1) = .true.
        bounded(2) = .false.
        bounds(1) = 0.0_r8;
    CASE Default
-      filter_kind = EAKF
+      filter_kind = BOUNDED_NORMAL_RHF
       bounded(:) = .false.
       return
   END SELECT
