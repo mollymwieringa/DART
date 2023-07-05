@@ -28,6 +28,7 @@ integrate_model
 obs_common_subset
 obs_diag
 obs_sequence_tool
+obs_seq_to_netcdf
 )
 
 model_programs=(

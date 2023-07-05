@@ -139,10 +139,11 @@
 /
 
 &dart_to_cice_nml
-    dart_to_cice_input_file = 'restart_state.nc'
-    original_cice_input_file = 'dart_restart.nc'
-    previous_cice_input_file = 'pre_restart.nc'
+    dart_to_cice_input_file = 'post_filter_restart.nc'
+    original_cice_restart_file = 'pre_filter_restart.nc'
+    postprocessed_output_file = 'postprocessed_restart.nc'
     balance_method = 'simple_squeeze'
+    postprocess = 'cice'
     r_snw_name = 'r_snw_vary'
     gridpt_oi = 3
 /
@@ -175,6 +176,11 @@
    print_only        = .false.,
    gregorian_cal     = .false.
    /
+
+&obs_impact_tool_nml
+   input_filename = ''
+   output_filename = ''
+   debug = .false.  
 
 &obs_diag_nml
    obs_sequence_name     = 'obs_seq.final',
@@ -223,7 +229,7 @@
 /
 
 &quantile_distributions_nml
-   fix_bound_violations = .true.,
+   fix_rh_bound_violations = .true.,
    use_logit_instead_of_probit = .true.
    do_inverse_check = .true.
    /

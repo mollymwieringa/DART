@@ -370,24 +370,26 @@ do copies = 1, ens_size
          local_diffs(copies) = sum(adiff(:))
 
        ! simple rms difference
-       case (3)
+      case (3)
    
-          where (useindex) adiff(:) = ens_mean(:) - ens_mems(copies, :)
+         where (useindex) 
+            adiff(:) = ens_mean(:) - ens_mems(copies, :)
+         endwhere
    
-          local_diffs(copies) = sum(adiff * adiff)
+         local_diffs(copies) = sum(adiff * adiff)
 
        ! normalized rms difference
-       case (4)
+      case (4)
    
-          where (useindex) 
-             where (ens_mean(:) /= 0.0_r8) 
-                adiff = (ens_mean(:) - ens_mems(copies,:)) / ens_mean(:)
-             elsewhere
-                adiff = ens_mems(copies,:)
-             endwhere
-          endwhere
+         where (useindex) 
+            where (ens_mean(:) /= 0.0_r8) 
+               adiff = (ens_mean(:) - ens_mems(copies,:)) / ens_mean(:)
+            elsewhere
+               adiff = ens_mems(copies,:)
+            endwhere
+         endwhere
    
-          local_diffs(copies) = sum(adiff * adiff)
+         local_diffs(copies) = sum(adiff * adiff)
    
       case default
          write(msgstring, *) 'Valid values for difference_method are 1-4, value is', difference_method
