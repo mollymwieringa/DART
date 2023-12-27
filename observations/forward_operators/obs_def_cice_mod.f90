@@ -251,7 +251,7 @@ do icat = 1, Ncat
 
    where(istatus1==0 .and. istatus2==0) &
      fb_volume = fb_volume + ice_volume*(1 - ice_dens/water_dens) - &
-                             snow_volume*snow_dens/water_dens
+                             snow_volume*(snow_dens/water_dens - 1)
 end do
 
 where(istatus3==0 .and. agreg_sic>1e-6) agreg_fb = fb_volume/agreg_sic
