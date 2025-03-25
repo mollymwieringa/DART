@@ -74,7 +74,7 @@ def lon_lat_to_cartesian(lon, lat, R = 1):
 
 
 def write_blank_obs_seq(lat, lon, year, mon, day, obs_seq_in, ob_types, error = 'default', case_name=None):
-    
+
     # define status tracker
     status = 0
 
@@ -315,7 +315,7 @@ if category is True:
                         'aice02', 'QTY_SEAICE_AICE02'        , 'UPDATE',
                         'aice03', 'QTY_SEAICE_AICE03'        , 'UPDATE',
                         'aice04', 'QTY_SEAICE_AICE04'        , 'UPDATE',
-                    '   aice05', 'QTY_SEAICE_AICE05'        , 'UPDATE']
+                        'aice05', 'QTY_SEAICE_AICE05'        , 'UPDATE']
 else:   
     state_variables = ['aicen', 'QTY_SEAICE_CONCENTR', 'UPDATE',
                        'vicen', 'QTY_SEAICE_VOLUME', 'UPDATE',
