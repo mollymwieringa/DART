@@ -957,7 +957,7 @@ SELECT CASE (obs_type)
           QTY_SEAICE_AICE03         , &
           QTY_SEAICE_AICE04         , &
           QTY_SEAICE_AICE05         )
-      base_offset = get_index_start(domain_id, get_varid_from_kind(obs_type)) 
+      base_offset = get_index_start(domain_id, get_varid_from_kind(domain_id, obs_type)) 
       cat_signal = 2
    CASE ( QTY_U_SEAICE_COMPONENT    , &   ! these kinds are just 2D vars
           QTY_V_SEAICE_COMPONENT    , &
