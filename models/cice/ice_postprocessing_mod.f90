@@ -7,15 +7,17 @@
 module ice_postprocessing_mod
 
 use types_mod, only : r8
+use  utilities_mod, only : E_ERR, error_handler
+use  netcdf_utilities_mod, only : nc_check
 use netcdf
 
 implicit none
 
-! general variable iniatlization
+! general variable initialization
+character(len=3)   :: nchar
 character(len=512) :: string1, string2, msgstring
 character(len=15)  :: varname
-
-
+integer :: n, i, j
 
 ! -----------------------------------------------------------------------------
 contains
@@ -67,7 +69,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
    integer,               intent(in)  :: ncid
    character(len=*),      intent(in)  :: varname, filename
    real(r8), allocatable, intent(in)  :: var(:,:,:)
-   character(len=*),      intent(in)  :: filename
    integer                            :: VarID, io
 
    ! write a variable to the netcdf file
@@ -775,5 +776,193 @@ end subroutine write_3d_variable
  
  end subroutine cice_rebalancing
  !------------------------------------------------------------------------
+
+!------------------------------------------------------------------
+! FUNCTIONS       
+!------------------------------------------------------------------
+function enthalpy_mush(zTin, zSin) result(zqin)
+
+   ! enthalpy of mush from mush temperature and bulk salinity
+
+   real(r8), intent(in) :: &
+        zTin, & ! ice layer temperature (C)
+        zSin    ! ice layer bulk salinity (ppt)
+
+   real(r8) :: &
+        zqin    ! ice layer enthalpy (J m-3) 
+
+   real(r8) :: &
+        phi     ! ice liquid fraction 
+
+! from shr_const_mod.F90
+   real(r8),parameter :: SHR_CONST_CPSW  = 3.996e3_R8   ! specific heat of sea water ~ J/kg/K
+   real(R8),parameter :: SHR_CONST_CPICE = 2.11727e3_R8 ! specific heat of fresh ice ~ J/kg/K
+   real(R8),parameter :: SHR_CONST_RHOSW = 1.026e3_R8   ! density of sea water ~ kg/m^3
+   real(R8),parameter :: SHR_CONST_RHOICE= 0.917e3_R8   ! density of ice        ~ kg/m^3
+   real(R8),parameter :: SHR_CONST_LATICE= 3.337e5_R8   ! latent heat of fusion ~ J/kg
+
+
+! from cice/src/drivers/cesm/ice_constants.F90
+   real(r8) :: cp_ocn, cp_ice, rhoi, rhow, Lfresh
+
+   cp_ice    = SHR_CONST_CPICE  ! specific heat of fresh ice (J/kg/K)
+   cp_ocn    = SHR_CONST_CPSW   ! specific heat of ocn    (J/kg/K)
+   rhoi      = SHR_CONST_RHOICE ! density of ice (kg/m^3)
+   rhow      = SHR_CONST_RHOSW  ! density of seawater (kg/m^3)
+   Lfresh    = SHR_CONST_LATICE ! latent heat of melting of fresh ice (J/kg)
+
+   phi = liquid_fraction(zTin, zSin)
+
+   zqin = phi * (cp_ocn * rhow - cp_ice * rhoi) * zTin + &
+          rhoi * cp_ice * zTin - (1._r8 - phi) * rhoi * Lfresh
+
+ end function enthalpy_mush
+
+ function liquid_fraction(zTin, zSin) result(phi)
+
+   ! liquid fraction of mush from mush temperature and bulk salinity
+
+   real(r8), intent(in) :: &
+        zTin, & ! ice layer temperature (C)
+        zSin    ! ice layer bulk salinity (ppt)
+
+   real(r8) :: &
+        phi , & ! liquid fraction
+        Sbr     ! brine salinity (ppt)
+
+   real (r8), parameter :: puny = 1.0e-11_r8 ! cice/src/drivers/cesm/ice_constants.F90
+
+   Sbr = max(liquidus_brine_salinity_mush(zTin),puny)
+   phi = zSin / max(Sbr, zSin)
+
+ end function liquid_fraction
+
+ function snow_enthaply(Ti) result(qsno)
+   real(r8), intent(in) :: Ti
+
+   real(r8),parameter :: rhos = 330.0_r8, &
+                       Lfresh = 2.835e6_r8 - 2.501e6_r8, &
+                       cp_ice = 2106._r8
+   real(r8) :: qsno
+
+   qsno = -rhos*(Lfresh - cp_ice*min(0.0_r8,Ti))
+end function snow_enthaply
+
+function liquidus_brine_salinity_mush(zTin) result(Sbr)
+
+   ! liquidus relation: equilibrium brine salinity as function of temperature
+   ! based on empirical data from Assur (1958)
+
+   real(r8), intent(in) :: &
+        zTin         ! ice layer temperature (C)
+
+   real(r8) :: &
+        Sbr          ! ice brine salinity (ppt)
+
+   real(r8) :: &
+        t_high   , & ! mask for high temperature liquidus region
+        lsubzero     ! mask for sub-zero temperatures
+
+   !constant numbers from ice_constants.F90
+   real(r8), parameter :: &
+        c1      = 1.0_r8 , &
+        c1000   = 1000_r8
+
+   ! liquidus relation - higher temperature region
+   real(r8), parameter :: &
+        az1_liq = -18.48_r8 ,&
+        bz1_liq =   0.0_r8
+
+   ! liquidus relation - lower temperature region
+   real(r8), parameter :: &
+        az2_liq = -10.3085_r8,  &
+        bz2_liq =  62.4_r8
+
+   ! liquidus break
+   real(r8), parameter :: &
+        Tb_liq = -7.6362968855167352_r8
+        
+   ! basic liquidus relation constants
+   real(r8), parameter :: &
+        az1p_liq = az1_liq / c1000, &
+        bz1p_liq = bz1_liq / c1000, &
+        az2p_liq = az2_liq / c1000, &
+        bz2p_liq = bz2_liq / c1000
+
+   ! temperature to brine salinity
+   real(r8), parameter :: &
+      J1_liq = bz1_liq / az1_liq         , &
+      K1_liq = c1 / c1000                , &
+      L1_liq = (c1 + bz1p_liq) / az1_liq , &
+      J2_liq = bz2_liq  / az2_liq        , &
+      K2_liq = c1 / c1000                , &
+      L2_liq = (c1 + bz2p_liq) / az2_liq
+
+   t_high   = merge(1._r8, 0._r8, (zTin > Tb_liq))
+   lsubzero = merge(1._r8, 0._r8, (zTin <= 1._r8))
+
+   Sbr = ((zTin + J1_liq) / (K1_liq * zTin + L1_liq)) * t_high + &
+         ((zTin + J2_liq) / (K2_liq * zTin + L2_liq)) * (1._r8 - t_high)
+
+   Sbr = Sbr * lsubzero
+
+end function liquidus_brine_salinity_mush
+
+function liquidus_temperature_mush(Sbr) result(zTin)
+
+   ! liquidus relation: equilibrium temperature as function of brine salinity
+   ! based on empirical data from Assur (1958)
+
+   real(r8), intent(in) :: &
+        Sbr    ! ice brine salinity (ppt)
+
+   real(r8) :: &
+        zTin   ! ice layer temperature (C)
+
+   real(r8) :: &
+        t_high ! mask for high temperature liquidus region
+
+   ! liquidus break
+   real(r8), parameter :: &
+      Sb_liq =  123.66702800276086_r8    ! salinity of liquidus break
+
+   ! constant numbers from ice_constants.F90
+   real(r8), parameter :: &
+        c1      = 1.0_r8 , &
+        c1000   = 1000_r8
+
+   ! liquidus relation - higher temperature region
+   real(r8), parameter :: &
+        az1_liq = -18.48_r8 ,&
+        bz1_liq =   0.0_r8
+
+   ! liquidus relation - lower temperature region
+   real(r8), parameter :: &
+        az2_liq = -10.3085_r8,  &
+        bz2_liq =  62.4_r8
+
+   ! basic liquidus relation constants
+   real(r8), parameter :: &
+        az1p_liq = az1_liq / c1000, &
+        bz1p_liq = bz1_liq / c1000, &
+        az2p_liq = az2_liq / c1000, &
+        bz2p_liq = bz2_liq / c1000
+
+ ! brine salinity to temperature
+   real(r8), parameter :: &
+      M1_liq = az1_liq            , &
+      N1_liq = -az1p_liq          , &
+      O1_liq = -bz1_liq / az1_liq , &
+      M2_liq = az2_liq            , &
+      N2_liq = -az2p_liq          , &
+      O2_liq = -bz2_liq / az2_liq
+
+   t_high = merge(1._r8, 0._r8, (Sbr <= Sb_liq))
+
+   zTin = ((Sbr / (M1_liq + N1_liq * Sbr)) + O1_liq) * t_high + &
+         ((Sbr / (M2_liq + N2_liq * Sbr)) + O2_liq) * (1._r8 - t_high)
+
+end function liquidus_temperature_mush
+
 
 end module ice_postprocessing_mod
