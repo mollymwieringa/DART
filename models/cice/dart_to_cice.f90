@@ -21,7 +21,8 @@ use  utilities_mod, only : initialize_utilities, finalize_utilities, &
                              find_namelist_in_file, check_namelist_read, &
                              file_exist, error_handler, E_ERR, E_MSG, to_upper
 use ice_postprocessing_mod, only : cice_rebalancing, area_simple_squeeze, &
-                                   volume_simple_squeeze, get_3d_variable
+                                   volume_simple_squeeze, get_3d_variable, &
+                                   write_3d_variable
 use  netcdf_utilities_mod, only : nc_check
 use  netcdf 
 
@@ -49,11 +50,10 @@ namelist /dart_to_cice_nml/ dart_to_cice_input_file,    &
 
 ! general variable iniatlization
 character(len=512) :: string1, string2, msgstring
-character(len=15)  :: varname
 character(len=128) :: method
 character(len=3)   :: nchar
 
-integer :: iunit, io, ncid, dimid, l, n, i, j, VarID, Ncat, Nx, Ny
+integer :: iunit, io, ncid, dimid, l, n, i, j, Ncat, Nx, Ny
 real(r8), allocatable :: aicen_original(:,:,:), vicen_original(:,:,:), vsnon_original(:,:,:)
 real(r8), allocatable :: aicen(:,:,:), vicen(:,:,:), vsnon(:,:,:), Tsfcn(:,:,:)
 real(r8), allocatable :: qice001(:,:,:), qice002(:,:,:), qice003(:,:,:), qice004(:,:,:), qice005(:,:,:), qice006(:,:,:), qice007(:,:,:), qice008(:,:,:)
@@ -217,143 +217,29 @@ end if
 call nc_check( nf90_open(trim(postprocessed_output_file), NF90_WRITE, ncid), &
                   'dart_to_cice', 'open "'//trim(postprocessed_output_file)//'"')
 
-varname='aicen'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, aicen)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-   
-varname='vicen'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, vicen)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-   
-varname='vsnon'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, vsnon)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='Tsfcn'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, Tsfcn)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice001'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice001)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice002'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice002)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice003'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice003)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice004'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice004)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice005'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice005)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice006'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice006)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice007'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice007)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qice008'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qice008)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice001'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice001)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice002'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice002)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice003'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice003)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice004'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice004)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice005'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice005)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice006'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice006)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice007'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice007)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='sice008'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, sice008)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qsno001'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qsno001)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qsno002'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qsno002)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
-
-varname='qsno003'
-io = nf90_inq_varid(ncid, trim(varname), VarID)
-call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(postprocessed_output_file))
-io = nf90_put_var(ncid, VarID, qsno003)
-call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(postprocessed_output_file))
+call write_3d_variable(ncid, 'aicen', aicen, postprocessed_output_file)
+call write_3d_variable(ncid, 'vicen', vicen, postprocessed_output_file)
+call write_3d_variable(ncid, 'vsnon', vsnon, postprocessed_output_file)
+call write_3d_variable(ncid, 'Tsfcn', Tsfcn, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice001', qice001, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice002', qice002, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice003', qice003, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice004', qice004, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice005', qice005, postprocessed_output_file)     
+call write_3d_variable(ncid, 'qice006', qice006, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice007', qice007, postprocessed_output_file)
+call write_3d_variable(ncid, 'qice008', qice008, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice001', sice001, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice002', sice002, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice003', sice003, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice004', sice004, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice005', sice005, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice006', sice006, postprocessed_output_file)     
+call write_3d_variable(ncid, 'sice007', sice007, postprocessed_output_file)
+call write_3d_variable(ncid, 'sice008', sice008, postprocessed_output_file)
+call write_3d_variable(ncid, 'qsno001', qsno001, postprocessed_output_file)
+call write_3d_variable(ncid, 'qsno002', qsno002, postprocessed_output_file)
+call write_3d_variable(ncid, 'qsno003', qsno003, postprocessed_output_file)
 
 call nc_check(nf90_close(ncid),'dart_to_cice', 'close '//trim(postprocessed_output_file))
 

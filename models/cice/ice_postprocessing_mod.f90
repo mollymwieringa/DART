@@ -29,7 +29,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     character(len=*),      intent(in)  :: filename
  
     integer, dimension(NF90_MAX_VAR_DIMS) :: dimIDs, dimLengths
-    integer                               :: ndims
+    integer                               :: ndims, VarID, io
     character(len=NF90_MAX_NAME)          :: dimName
     
     write(msgstring,*) trim(varname)//' '//trim(filename)
@@ -60,6 +60,24 @@ subroutine get_3d_variable(ncid, varname, var, filename)
              'get_var '//trim(msgstring))
     
  end subroutine get_3d_variable
+
+! -----------------------------------------------------------------------------
+ subroutine write_3d_variable(ncid, varname, var, filename)
+
+   integer,               intent(in)  :: ncid
+   character(len=*),      intent(in)  :: varname, filename
+   real(r8), allocatable, intent(in)  :: var(:,:,:)
+   character(len=*),      intent(in)  :: filename
+   integer                            :: VarID, io
+
+   ! write a variable to the netcdf file
+   io = nf90_inq_varid(ncid, trim(varname), VarID)
+   call nc_check(io, 'dart_to_cice', 'inq_varid '//trim(varname)//' '//trim(filename))
+   io = nf90_put_var(ncid, VarID, var)
+   call nc_check(io, 'dart_to_cice', 'put_var '//trim(varname)//' '//trim(filename))
+
+end subroutine write_3d_variable
+
 ! ----------------------------------------------------------------------------- 
 
  subroutine area_simple_squeeze(qice001, qice002,     &
@@ -756,7 +774,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
  write(*,*) 'finishing squeezing and reinitalizing associated variables...'
  
  end subroutine cice_rebalancing
- 
  !------------------------------------------------------------------------
 
 end module ice_postprocessing_mod
