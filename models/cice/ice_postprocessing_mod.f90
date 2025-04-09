@@ -79,7 +79,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                                 Tsfcn,                &
                                 Ncat, Nx, Ny)
  
-    real(r8), allocatable, intent(inout), dimension(:,:,:) :: &
+    real(r8), intent(inout), dimension(Nx,Ny,Ncat) :: &
                                         aicen, vicen, vsnon,  &
                                         qice001, qice002, qice003, qice004, &
                                         qice005, qice006, qice007, qice008, &
@@ -87,15 +87,15 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                                         sice005, sice006, sice007, sice008, &
                                         qsno001, qsno002, qsno003,   &
                                         Tsfcn
-    real(r8), allocatable, intent(in), dimension(:,:,:) :: &
+    real(r8), intent(in), dimension(Nx,Ny,Ncat) :: &
                                         aicen_original,    &
                                         vicen_original,    &
                                         vsnon_original  
     integer, intent(in) :: Ncat, Nx, Ny
  
-    real(r8), allocatable, dimension(:,:,:) :: hicen_original, hsnon_original, aicen_temp
-    real(r8), allocatable, dimension(:,:) :: aice, aice_temp
-    real(r8), allocatable, dimension(:) :: hin_max, hcat_midpoint
+    real(r8), dimension(Nx,Ny,Ncat) :: hicen_original, hsnon_original, aicen_temp
+    real(r8), dimension(Nx,Ny) :: aice, aice_temp
+    real(r8), dimension(Ncat) :: hin_max, hcat_midpoint
     real(r8) :: squeeze, cc1, cc2, x1, Si0new, Ti, qsno_hold, qi0new
     real(r8), parameter :: Tsmelt = 0._r8,        &
                            cc3 = 3._r8,           &
@@ -110,8 +110,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     Si0new = sss - dSin0_frazil              
      
     ! calculate bounds and midpoints of thickness distribution
-    allocate(hin_max(Ncat))
-    allocate(hcat_midpoint(Ncat))
     hin_max(0) = 0.0_r8
     do n = 1, Ncat
        x1 = real(n-1,kind=r8) / real(Ncat,kind=r8)
@@ -120,12 +118,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
        hcat_midpoint(n)=0.5_r8*(hin_max(n-1)+hin_max(n))
     enddo
     
-    ! allocate(sice001(Nx,Ny,Ncat),sice002(Nx,Ny,Ncat),sice003(Nx,Ny,Ncat),sice004(Nx,Ny,Ncat), &
-    !          sice005(Nx,Ny,Ncat),sice006(Nx,Ny,Ncat),sice007(Nx,Ny,Ncat),sice008(Nx,Ny,Ncat), &
-    !          qice001(Nx,Ny,Ncat),qice002(Nx,Ny,Ncat),qice003(Nx,Ny,Ncat),qice004(Nx,Ny,Ncat), &
-    !          qice005(Nx,Ny,Ncat),qice006(Nx,Ny,Ncat),qice007(Nx,Ny,Ncat),qice008(Nx,Ny,Ncat), &
-    !          qsno001(Nx,Ny,Ncat),qsno002(Nx,Ny,Ncat),qsno003(Nx,Ny,Ncat))
-    ! allocate(aicen(Nx,Ny,Ncat),vicen(Nx,Ny,Ncat),vsnon(Nx,Ny,Ncat),Tsfcn(Nx,Ny,Ncat))
     ! Begin process 
     sice001  = max(0.0_r8, sice001)  ! salinities must be non-negative
     sice002  = max(0.0_r8, sice002)  ! salinities must be non-negative
@@ -150,7 +142,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     Tsfcn = min(Tsmelt,Tsfcn)  ! ice/snow surface must not exceed melting
  
     ! calculate aice, which might be negative or >1 at this point
-    allocate(aice(Nx,Ny))
     aice = aicen(:,:,1)
     do n = 2, Ncat  
        aice = aice+aicen(:,:,n)
@@ -162,7 +153,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     vsnon = max(0.0_r8,vsnon)   ! same for volumes (snow)
  
     ! reclaculate aice, now it should be non-negative\
-    allocate(aice_temp(Nx,Ny))
     aice_temp = aicen(:,:,1)
     do n = 2, Ncat
        aice_temp = aice_temp + aicen(:,:,n)
@@ -199,12 +189,9 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     enddo
  
     ! update vsnon and vicen using conserved category thickness values
-    allocate(aicen_temp(Nx,Ny,Ncat))
     aicen_temp = aicen_original
     where(aicen_temp==0) aicen_temp = -999
  
-    allocate(hicen_original(Nx,Ny,Ncat))
-    allocate(hsnon_original(Nx,Ny,Ncat))
     do n=1,Ncat
        do j=1,Ny
           do i=1,Nx
@@ -287,9 +274,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
        enddo
     enddo
  
-    deallocate(aice, aice_temp, aicen_temp, hicen_original, hsnon_original)
-    deallocate(hin_max, hcat_midpoint)
- 
  end subroutine area_simple_squeeze
 ! -----------------------------------------------------------------------------
  
@@ -310,7 +294,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                                   Tsfcn,               &
                                   Ncat, Nx, Ny)
  
-    real(r8), allocatable, intent(inout), dimension(:,:,:) :: &
+    real(r8), intent(inout), dimension(Nx,Ny,Ncat) :: &
                                         aicen, vicen, vsnon,  &
                           qice001, qice002, qice003, qice004, &
                           qice005, qice006, qice007, qice008, &
@@ -318,15 +302,15 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                           sice005, sice006, sice007, sice008, &
                                    qsno001, qsno002, qsno003, &
                                                         Tsfcn
-    real(r8), allocatable, intent(in), dimension(:,:,:) :: &
+    real(r8), intent(in), dimension(Nx,Ny,Ncat) :: &
                                            aicen_original, &
                                            vicen_original, &
                                            vsnon_original   
     integer, intent(in) :: Ncat, Nx, Ny
  
-    real(r8), allocatable, dimension(:,:,:) :: hicen_original, hsnon_original, aicen_temp
-    real(r8), allocatable, dimension(:,:) :: aice, vice, vice_temp
-    real(r8), allocatable, dimension(:) :: hin_max, hcat_midpoint
+    real(r8), dimension(Nx,Ny,Ncat) :: hicen_original, hsnon_original, aicen_temp
+    real(r8), dimension(Nx,Ny) :: aice, vice, vice_temp
+    real(r8), dimension(Ncat) :: hin_max, hcat_midpoint
     real(r8) :: squeeze, cc1, cc2, x1, Si0new, Ti, qsno_hold, qi0new
     real(r8), parameter :: Tsmelt = 0._r8,        &
                            cc3 = 3._r8,           &
@@ -341,8 +325,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
      Si0new = sss - dSin0_frazil              
  
     ! calculate bounds and midpoints of thickness distribution
-    allocate(hin_max(Ncat))
-    allocate(hcat_midpoint(Ncat))
     hin_max(0) = 0.0_r8
     do n = 1, Ncat
        x1 = real(n-1,kind=r8) / real(Ncat,kind=r8)
@@ -350,14 +332,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                      + cc1 + cc2*(c1 + tanh(cc3*(x1-c1)))
        hcat_midpoint(n)=0.5_r8*(hin_max(n-1)+hin_max(n))
     enddo
- 
-    ! allocate(sice001(Nx,Ny,Ncat),sice002(Nx,Ny,Ncat),sice003(Nx,Ny,Ncat),sice004(Nx,Ny,Ncat), &
-    !          sice005(Nx,Ny,Ncat),sice006(Nx,Ny,Ncat),sice007(Nx,Ny,Ncat),sice008(Nx,Ny,Ncat), &
-    !          qice001(Nx,Ny,Ncat),qice002(Nx,Ny,Ncat),qice003(Nx,Ny,Ncat),qice004(Nx,Ny,Ncat), &
-    !          qice005(Nx,Ny,Ncat),qice006(Nx,Ny,Ncat),qice007(Nx,Ny,Ncat),qice008(Nx,Ny,Ncat), &
-    !          qsno001(Nx,Ny,Ncat),qsno002(Nx,Ny,Ncat),qsno003(Nx,Ny,Ncat))
-    ! allocate(aicen(Nx,Ny,Ncat),vicen(Nx,Ny,Ncat),vsnon(Nx,Ny,Ncat),Tsfcn(Nx,Ny,Ncat))
- 
+
     ! Begin process 
     sice001  = max(0.0_r8, sice001)  ! salinities must be non-negative
     sice002  = max(0.0_r8, sice002)  ! salinities must be non-negative
@@ -381,7 +356,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     Tsfcn = min(Tsmelt,Tsfcn)  ! ice/snow surface must not exceed melting
  
     ! calculate aice, which might be negative or >1 at this point
-    allocate(vice(Nx,Ny))
     vice = vicen(:,:,1)
     do n = 2, Ncat  
        vice = vice+vicen(:,:,n)
@@ -391,7 +365,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     vicen = max(0.0_r8,vicen)   ! same for volumes (ice)
  
     ! reclaculate aice, now it should be non-negative
-    allocate(vice_temp(Nx,Ny))
     vice_temp = vicen(:,:,1)
     do n = 2, Ncat
        vice_temp = vice_temp + vicen(:,:,n)
@@ -418,12 +391,9 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     enddo
  
     ! calculate orignal caterogy thickness values
-    allocate(aicen_temp(Nx,Ny,Ncat))
     aicen_temp = aicen_original
     where(aicen_temp==0) aicen_temp = -999
  
-    allocate(hicen_original(Nx,Ny,Ncat))
-    allocate(hsnon_original(Nx,Ny,Ncat))
     do n=1,Ncat
        do j=1,Ny
           do i=1,Nx
@@ -438,7 +408,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
    
     ! calculate the area implied by original category thickness and updated volume
     aicen = vicen/hicen_original
-    allocate(aice(Nx,Ny))
     aice = aicen(:,:,1)
     do n = 2, Ncat  
        aice = aice+aicen(:,:,n)
@@ -525,9 +494,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
        enddo
     enddo
  
-    deallocate(aice, vice, vice_temp, aicen_temp, hicen_original, hsnon_original)
-    deallocate(hin_max, hcat_midpoint)
- 
  end subroutine volume_simple_squeeze
 ! -----------------------------------------------------------------------------
  
@@ -548,7 +514,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                              Tsfcn,                &
                              Ncat, Nx, Ny)
  
-    real(r8), allocatable, intent(inout), dimension(:,:,:) :: &
+    real(r8), intent(inout), dimension(Nx,Ny,Ncat) :: &
                                         aicen, vicen, vsnon,  &
                           qice001, qice002, qice003, qice004, &
                           qice005, qice006, qice007, qice008, &
@@ -556,14 +522,14 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                           sice005, sice006, sice007, sice008, &
                                    qsno001, qsno002, qsno003, &
                                                        Tsfcn
-    real(r8), allocatable, intent(in), dimension(:,:,:) :: &
+    real(r8), intent(in), dimension(Nx,Ny,Ncat) :: &
                                            aicen_original, &
                                            vicen_original, &
                                            vsnon_original   
     integer, intent(in) :: Ncat, Nx, Ny
  
-    real(r8), allocatable :: aice(:,:), vice(:,:), vsno(:,:), aice_temp(:,:), vice_temp(:,:), vsno_temp(:,:) 
-    real(r8), allocatable :: hin_max(:), hcat_midpoint(:)
+    real(r8), dimension(Nx,Ny) :: aice, vice, vsno, aice_temp, vice_temp, vsno_temp 
+    real(r8), dimension(Ncat) :: hin_max, hcat_midpoint
     real(r8) :: squeeze, cc1, cc2, x1, Si0new, Ti, qsno_hold, qi0new, hicen
     real(r8), parameter :: Tsmelt = 0._r8,        &
                            cc3 = 3._r8,           &
@@ -578,8 +544,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     Si0new = sss - dSin0_frazil              
  
     ! calculate bounds and midpoints of thickness distribution
-    allocate(hin_max(Ncat))
-    allocate(hcat_midpoint(Ncat))
     hin_max(0) = 0.0_r8
     do n = 1, Ncat
        x1 = real(n-1,kind=r8) / real(Ncat,kind=r8)
@@ -587,14 +551,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
                    + cc1 + cc2*(c1 + tanh(cc3*(x1-c1)))
        hcat_midpoint(n)=0.5_r8*(hin_max(n-1)+hin_max(n))
     enddo
- 
-    ! allocate(sice001(Nx,Ny,Ncat),sice002(Nx,Ny,Ncat),sice003(Nx,Ny,Ncat),sice004(Nx,Ny,Ncat), &
-    !          sice005(Nx,Ny,Ncat),sice006(Nx,Ny,Ncat),sice007(Nx,Ny,Ncat),sice008(Nx,Ny,Ncat), &
-    !          qice001(Nx,Ny,Ncat),qice002(Nx,Ny,Ncat),qice003(Nx,Ny,Ncat),qice004(Nx,Ny,Ncat), &
-    !          qice005(Nx,Ny,Ncat),qice006(Nx,Ny,Ncat),qice007(Nx,Ny,Ncat),qice008(Nx,Ny,Ncat), &
-    !          qsno001(Nx,Ny,Ncat),qsno002(Nx,Ny,Ncat),qsno003(Nx,Ny,Ncat))
-    ! allocate(aicen(Nx,Ny,Ncat),vicen(Nx,Ny,Ncat),vsnon(Nx,Ny,Ncat),Tsfcn(Nx,Ny,Ncat))
- 
+
     ! Begin process 
     write(*,*) 'beginning cice postprocessing process...'
     sice001  = max(0.0_r8, sice001)  ! salinities must be non-negative
@@ -619,11 +576,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     Tsfcn = min(Tsmelt,Tsfcn)  ! ice/snow surface must not exceed melting
     aicen = min(1.0_r8,aicen)  ! concentrations must not exceed 1 
     
-    ! calculate aggregates for post-adjustment category variables 
-    allocate(aice(Nx,Ny))
-    allocate(vice(Nx,Ny))
-    allocate(vsno(Nx,Ny))
- 
+    ! calculate aggregates for post-adjustment category variables  
     write(*,*) 'calculating aggregates...'
     aice = aicen(:,:,1)
     vice = vicen(:,:,1)
@@ -641,10 +594,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
     vsnon = max(0.0_r8,vsnon) ! volumes (snow) must be non-negative
  
     ! re-calculate aggregates once bounds are enforced
-    allocate(aice_temp(Nx,Ny))
-    allocate(vice_temp(Nx,Ny))
-    allocate(vsno_temp(Nx,Ny))
- 
     write(*,*) 'recalculating aggregates...'
     aice_temp = aicen(:,:,1)
     vice_temp = vicen(:,:,1)
@@ -725,7 +674,7 @@ subroutine get_3d_variable(ncid, varname, var, filename)
           !endif
  
           ! Adjust the volume, snow, salinities and enthalphies to be consistent with the squeezed concentrations
-          do n=1,Ncat
+          do n=1, Ncat
              ! if the adjustment and the original category both have ice in them... 
              if (aicen(i,j,n) > 0.0_r8 .and. aicen_original(i,j,n) > 0.0_r8) then
                 ! calculate the volume corresponding to the area and midpoint thickness, if there's no volume
@@ -803,9 +752,6 @@ subroutine get_3d_variable(ncid, varname, var, filename)
           enddo
        enddo
     enddo
- 
-    deallocate(aice, vice, vsno, aice_temp, vice_temp, vsno_temp)
-    deallocate(hin_max, hcat_midpoint)
  
  write(*,*) 'finishing squeezing and reinitalizing associated variables...'
  
