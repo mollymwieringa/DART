@@ -98,7 +98,11 @@ private
 public :: filter_assim, &
           set_assim_tools_trace, &
           test_state_copies, &
-          update_ens_from_weights
+          update_ens_from_weights, &
+          update_from_obs_inc,   &
+          obs_increment_eakf,   &
+          obs_increment_kde,  &
+          obs_increment_bounded_norm_rhf
 
 ! Indicates if module initialization subroutine has been called yet
 logical :: module_initialized = .false.

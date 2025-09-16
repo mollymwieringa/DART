@@ -36,6 +36,8 @@ model_programs=(
 
 model_serial_programs=(
 dart_to_cice
+obs_increments
+state_regression
 )
 
 # quickbuild arguments

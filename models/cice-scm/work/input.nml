@@ -144,6 +144,25 @@
     gridpt_oi = 3
 /
 
+&obs_increments_nml
+    bounded_below = .true.
+    bounded_above = .true.
+    lower_bound = 0.0
+    upper_bound = 1.0
+    ens_size = 30
+/
+
+&state_regression_nml
+    obs_dist = 'bnrh'
+    bounded_below = .true.
+    bounded_above = .true.
+    lower_bound = 0.0
+    upper_bound = 1.0
+    ens_size = 30
+    nc = 5
+/
+
+
 &utilities_nml
    TERMLEVEL = 1,
    module_details = .false.,
