@@ -7,32 +7,51 @@
 main() {
 
 export DART=$(git rev-parse --show-toplevel)
-source "$DART"/build_templates/buildconvfunctions.sh
+source "$DART"/build_templates/buildfunctions.sh
 
-CONVERTER=cice
+MODEL=cice-scm
 LOCATION=threed_sphere
 
 
 programs=(
-cice_to_obs
-seaice_aggre_to_obs_netcdf
-obs_sequence_tool
-advance_time
-seaicedata_to_obs_netcdf
+closest_member_tool
+filter
+model_mod_check
+perfect_model_obs
 )
 
-# build arguments
+serial_programs=(
+create_fixed_network_seq
+create_obs_sequence
+fill_inflation_restart
+integrate_model
+obs_common_subset
+obs_diag
+obs_sequence_tool
+obs_seq_to_netcdf
+)
+
+model_programs=(
+)
+
+model_serial_programs=(
+dart_to_cice
+)
+
+# quickbuild arguments
 arguments "$@"
 
 # clean the directory
 \rm -f -- *.o *.mod Makefile .cppdefs
 
+# build any NetCDF files from .cdl files
+cdl_to_netcdf
+
 # build and run preprocess before making any other DART executables
 buildpreprocess
 
 # build 
-buildconv
-
+buildit
 
 # clean up
 \rm -f -- *.o *.mod
