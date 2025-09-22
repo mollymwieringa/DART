@@ -86,7 +86,7 @@ program state_regression
     ! -------------------------------------------------------------------------------------------------
     ! --- Disaggregation ------------------------------------------------------------------------------
     call cpu_time(start_time)
-    call state_regress_disaggregation(obs_inc, ens_prior, ens_post, ens_size, nc, &
+    call state_regress_disaggregation(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                       bounded_above, bounded_below, upper_bound, lower_bound)
     call cpu_time(end_time)
     print *, 'Time for regression by disaggregation: ', end_time - start_time
