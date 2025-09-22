@@ -38,21 +38,21 @@ program state_regression
     ! BEGIN 
     ! -------------------------------------------------------------------------------------------------
     ! Get the state prior ensemble information
-    open(unit=23, file='prior_ensemble.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='prior_ensemble.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     do i = 1, ens_size
         read(23, REC=i) ens_prior(i,:)
     end do
     close(23)
 
     ! get the obs prior ensemble information
-    open(unit=23, file='obs_prior_ensemble.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='obs_prior_ensemble.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     do i = 1, ens_size
         read(23, REC=i) obs_prior(i)
     end do
     close(23)
 
     ! get the obs posterior information
-    open(unit=23, file='obs_post_ensemble.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='obs_post_ensemble.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     do i = 1, ens_size
         read(23, REC=i) obs_post(i)
     end do
@@ -62,17 +62,17 @@ program state_regression
     if (obs_dist == 'bnrh') then
         dist_for_obs = BOUNDED_NORMAL_RH_DISTRIBUTION
         dist_for_state = BOUNDED_NORMAL_RH_DISTRIBUTION
-        open(unit=23, file='obs_increments_bnrh.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+        open(unit=23, file='obs_increments_bnrh.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     else if (obs_dist == 'kde') then
         dist_for_obs = KDE_DISTRIBUTION
         dist_for_state = KDE_DISTRIBUTION
-        open(unit=23, file='obs_increments_kde.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+        open(unit=23, file='obs_increments_kde.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     else 
         dist_for_obs = NORMAL_DISTRIBUTION
         dist_for_state = NORMAL_DISTRIBUTION
         print *, 'Supplied observation distribution type is: ', obs_dist, '. By default, normal increments assumed.'
         print *, 'Please ensure this is correct if obs_dist is not normal in the namelist.'
-        open(unit=23, file='obs_increments_norm.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+        open(unit=23, file='obs_increments_norm.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     end if
 
     print *, 'Reading observation increments from obs adjustments with a ', obs_dist, ' distribution in the QCEF.'
@@ -91,7 +91,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-    open(unit=23, file='ens_post_disaggregation.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='ens_post_disaggregation.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     write(23, REC=1) ens_post
     close(23)
 
@@ -104,7 +104,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by relative fractional amount: ', end_time - start_time
 
-    open(unit=23, file='ens_post_relativefrac.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='ens_post_relativefrac.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     write(23, REC=1) ens_post
     close(23)
 
@@ -116,7 +116,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by probit (DART default): ', end_time - start_time
 
-    open(unit=23, file='ens_post_probit_raw.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='ens_post_probit_raw.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     write(23, REC=1) ens_post
     close(23)
 
@@ -125,7 +125,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for probit postprocessing: ', end_time - start_time
 
-    open(unit=23, file='ens_post_probit_postprocess.dat', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='ens_post_probit_postprocess.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
     write(23, REC=1) ens_post
     close(23)
 
