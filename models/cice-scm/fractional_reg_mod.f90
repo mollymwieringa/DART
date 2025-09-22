@@ -26,7 +26,7 @@ module fractional_reg_mod
     
     ! Subroutine to perform regression by disaggregation
     ! Does not care about the distribution of the ensemble
-    subroutine state_regress_disaggregation(obs_inc, ens_prior, ens_post, ens_size, nc, &
+    subroutine state_regress_disaggregation(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                             bounded_above, bounded_below, upper_bound, lower_bound)
 
         ! Declare routine variables
@@ -34,38 +34,62 @@ module fractional_reg_mod
         logical,   intent(in) :: bounded_above, bounded_below
         real(r8),  intent(in) :: upper_bound, lower_bound
         real(r8),  intent(in) :: ens_prior(ens_size, nc)
-        real(r8),  intent(in) :: obs_inc(ens_size)     
+        real(r8),  intent(in) :: obs_prior(ens_size), obs_post(ens_size)    
         real(r8), intent(out) :: ens_post(ens_size, nc) 
         
         ! Declare local variables
-        character(len=100)    :: errstring
+        character(len=128)    :: errstring
         integer               :: i, j
-        real(r8)              :: weights(ens_size, nc), state_inc(ens_size, nc)
+        real(r8)              :: weights(ens_size)
 
         ! Perform regression by disaggregation
         do i = 1, ens_size
-            ! Determine the weights
-            weights(i, :) = ens_prior(i, :) / sum(ens_prior(i, :))
-            ! Disaggregate the observation increment to state variable increments
-            state_inc(i, :) = obs_inc(i) * weights(i, :)
+            ! We want to be aware of the cases where the obs_prior is close to 0 
+            if (obs_prior(i) < 1e-8_r8) then
+                ! if obs_posterior is also zero, set weights to zero
+                if (obs_post(i) < 1e-8_r8) then
+                    ens_post(i, :) = 0.0_r8
+                ! else, if the DA process "grew mass", distribute that mass evenly across categories
+                ! this is probably fine if we assume the new "mass" is relatively small (no massive jumps)
+                ! this is not going to be true for a system like sea ice, where new ice will tend toward the first 
+                ! thickness category
+                else
+                    ens_post(i, :) = obs_post(i) / nc
+                end if
+            else
+                ! calculate weights as a scale factor and then apply the updates to the state
+                weights(i) = obs_post(i) / obs_prior(i)
+                ens_post(i, :) = weights(i) * ens_prior(i, :)
+            end if
         end do
 
-        ! Calculate the ensemble posterior state
-        ens_post = ens_prior + state_inc
-
-        ! Verify that the updated state variables are withing bounds
-        ! NOTE: being a bit lazy here and only checking the aggregate. Come back later to
-        !      make sure that individual categories are also within bounds if needed.
+        ! Verify that the updated state variables are within bounds
         do i = 1, ens_size
+            ! Check A: verify that all individual state variables are within bounds
+            do j = 1, nc
+                if (bounded_below) then
+                    if (ens_post(i, j) < lower_bound) then
+                        write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates lower bound."
+                        call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                    end if
+                end if
+                if (bounded_above) then
+                    if (ens_post(i, j) > upper_bound) then
+                        write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates upper bound."
+                        call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                    end if
+                end if
+            end do
+            ! Check B: verify that the sum of all state variables is also within bounds
             if (bounded_below) then 
                 if (sum(ens_post(i, :)) < lower_bound) then
-                    errstring = "Aggregate of state variables in an ensemble member results in lower bound violation."
+                    write(errstring, *) "Aggregate in ensemble member ", i, "results in lower bound violation."
                     call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
                 end if
             end if
             if (bounded_above) then
                 if (sum(ens_post(i, :)) > upper_bound) then
-                    errstring = "Aggregate of state variables in an ensemble member results in upper bound violation."
+                    write(errstring, *) "Aggregate in ensemble member ", i, "results in upper bound violation."
                     call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
                 end if
             end if
@@ -96,33 +120,33 @@ module fractional_reg_mod
         character(len=100)    :: errstring
         integer               :: i, j, nc_exp
         real(r8)              :: exp_prior(ens_size, nc+1)
-        real(r8), allocatable :: z_prior(:, :)
-        real(r8), allocatable :: z_post(:, :), z_inc(:, :) 
+        real(r8), allocatable :: xhat_prior(:, :)
+        real(r8), allocatable :: xhat_post(:, :), xhat_inc(:, :) 
         real(r8)              :: a_prior(ens_size), a_post(ens_size)
         real(r8)              :: net_a, reg_coef, obs_prior_mean, obs_prior_var
 
 
         ! Calculate the fractional amounts
-        ! Verify that the sumer of each ensemble member in ens_prior is 1.0
+        ! Verify that the sum of each ensemble member in ens_prior is 1.0
         ! If not, either add a "null category" if less than 1.0 OR squash down to relative
         ! fractional amounts and save the squashing factor.
 
         nc_exp = nc + 1
-        if (all(sum(ens_prior, dim=1) < 1.0_r8)) then
-            allocate(z_prior(ens_size, nc_exp))
-            allocate(z_post(ens_size, nc_exp))
-            allocate(z_inc(ens_size, nc_exp))
+        if (all(sum(ens_prior, dim=2) < 1.0_r8)) then
+            allocate(xhat_prior(ens_size, nc_exp))
+            allocate(xhat_post(ens_size, nc_exp))
+            allocate(xhat_inc(ens_size, nc_exp))
 
             do i = 1, ens_size
                 exp_prior(i, 1:nc) = ens_prior(i, :)
                 exp_prior(i, nc_exp) = 1.0_r8 - sum(ens_prior(i, :))
                 a_prior(i) = 1.0_r8
-                z_prior(i, :) = a_prior(i) * exp_prior(i, :)
+                xhat_prior(i, :) = a_prior(i) * exp_prior(i, :)
             end do
         else
-            allocate(z_prior(ens_size, nc))
-            allocate(z_post(ens_size, nc))
-            allocate(z_inc(ens_size, nc))
+            allocate(xhat_prior(ens_size, nc))
+            allocate(xhat_post(ens_size, nc))
+            allocate(xhat_inc(ens_size, nc))
 
             do i = 1, ens_size
                 if (sum(ens_prior(i,:)) /= 1.0_r8) then
@@ -130,27 +154,24 @@ module fractional_reg_mod
                 else
                     a_prior(i) = 1.0_r8
                 end if
-                z_prior(i,:) = a_prior(i) * ens_prior(i,:)
+                xhat_prior(i,:) = a_prior(i) * ens_prior(i,:)
             end do
         end if
 
-        ! Perform regression in relative fractional space
+        ! Perform regression in relative fractional space 
         net_a = 1.0_r8    ! This is a null value; net_a is not used at this time.
         obs_prior_mean = sum(obs_prior) / ens_size
         obs_prior_var = sum(obs_prior - obs_prior_mean)**2 / (ens_size - 1)
         call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, & 
-                                 obs_inc, z_prior, ens_size, z_inc, &
+                                 obs_inc, xhat_prior, ens_size, xhat_inc, &
                                  reg_coef, net_a)
 
         ! Calculate posterior fractional amounts
-        z_post = z_prior + z_inc
+        xhat_post = xhat_prior + xhat_inc
         do i = 1, ens_size
-            a_post(i) = sum(z_post(i, :))
-            ens_post(i, :) = z_post(i, 1:nc) / (a_post(i) * a_prior(i))
+            a_post(i) = sum(xhat_post(i, :))
+            ens_post(i, :) = xhat_post(i, 1:nc) / (a_post(i) * a_prior(i))
         end do
-        
-        ! ! if necessary, cut out the null category and convert back to state variable space
-        ! ens_post = z_post(:, 1:nc) / (a_post * a_prior)
 
         ! Verify that the updated state variables are within bounds
         do i = 1, ens_size
@@ -158,13 +179,13 @@ module fractional_reg_mod
             do j = 1, nc
                 if (bounded_below) then
                     if (ens_post(i, j) < lower_bound) then
-                        errstring = "State variable violates lower bound."
+                        write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates lower bound."
                         call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                     end if
                 end if
                 if (bounded_above) then
                     if (ens_post(i, j) > upper_bound) then
-                        errstring = "State variable violates upper bound."
+                        write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates upper bound."
                         call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                     end if
                 end if
@@ -172,19 +193,19 @@ module fractional_reg_mod
             ! Check B: verify that the sum of all state variables is also within bounds
             if (bounded_below) then
                 if (sum(ens_post(i, :)) < lower_bound) then
-                    errstring = 'Aggregate of state variables violates lower bound.'
+                    write(errstring, *) 'Aggregate of state variable in ensemble member ', i, 'violates lower bound.'
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
             end if
             if (bounded_above) then
                 if (sum(ens_post(i, :)) > upper_bound) then
-                    errstring = 'Aggregate of state variables violates upper bound.'
+                    write(errstring, *) 'Aggregate of state variables in ensemble member ', i, 'violates upper bound.'
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
             end if
         end do
 
-        deallocate(z_prior, z_post, z_inc)
+        deallocate(xhat_prior, xhat_post, xhat_inc)
 
     end subroutine state_regress_relativefrac
 
@@ -193,17 +214,6 @@ module fractional_reg_mod
     subroutine state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                     dist_for_obs, dist_for_state, &
                                     bounded_above, bounded_below, upper_bound, lower_bound)
-
-        ! temp_dist_params, and state_dist_params need to be figured out... 
-        ! dist_for_obs should be NORMAL_DISTRIBUTION
-        ! dist_for_state could be any of NORMAL DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
-
-        ! the to_probit_bounded_normal_rhf (etc) called from transform_to_probit calls a function that gathers information about 
-        ! the ensemble distribution parameters (p). p needs to go into that function with the distribution assignment, but the rest
-        ! of the parameters are filled in within that function. 
-
-        ! p goes in as a type (distribution_params_type) with dimensions for the number of variables in the state / obs list
-        !   however, this is otherwise empty to begin
 
         ! Declare routine variables
         integer,            intent(in) :: ens_size, nc
@@ -230,14 +240,14 @@ module fractional_reg_mod
                                  probit_obs_prior, .false., bounded_below, bounded_above, &
                                  lower_bound, upper_bound, ierr)
         if (ierr /= 0) then
-            errstring = "Error in transform_to_probit for observation prior"
+            write(errstring, *) "Error in transform_to_probit for observation prior"
             call error_handler(E_ERR, 'state_regress_probit', trim(errstring))
         end if
         call transform_to_probit(ens_size, obs_post, dist_for_obs, obs_dist_params, &
                                  probit_obs_post, .true., bounded_below, bounded_above, &
                                  lower_bound, upper_bound, ierr)
         if (ierr /= 0) then
-            errstring = "Error in transform_to_probit for observation posterior"
+            write(errstring, *) "Error in transform_to_probit for observation posterior"
             call error_handler(E_ERR, 'state_regress_probit', trim(errstring))
         end if
 
@@ -250,7 +260,7 @@ module fractional_reg_mod
                                  probit_ens_prior, .false., bounded_below, bounded_above, &
                                  lower_bound, upper_bound, ierr)
         if (ierr /= 0) then
-            errstring = "Error in transform_to_probit for state prior"
+            write(errstring, *) "Error in transform_to_probit for state prior"
             call error_handler(E_ERR, 'state_regress_probit', trim(errstring))
         end if
 
