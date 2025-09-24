@@ -3,7 +3,7 @@ program state_regression
     use types_mod,               only : r8
     use utilities_mod,           only : initialize_utilities, finalize_utilities,   &
                                         check_namelist_read, find_namelist_in_file
-    use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION
+    use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
     use fractional_reg_mod,      only : state_regress_disaggregation, state_regress_relativefrac,   &
                                         state_regress_probit, postprocess
 
@@ -38,23 +38,16 @@ program state_regression
     ! BEGIN 
     ! -------------------------------------------------------------------------------------------------
     ! Get the state prior ensemble information
-    open(unit=23, file='prior_ensemble.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='prior_ensemble.txt', status='OLD')
     do i = 1, ens_size
-        read(23, REC=i) ens_prior(i,:)
+        read(23, *) ens_prior(i,:)
     end do
     close(23)
 
     ! get the obs prior ensemble information
-    open(unit=23, file='obs_prior_ensemble.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file='obs_prior_ensemble.txt', status='OLD')
     do i = 1, ens_size
-        read(23, REC=i) obs_prior(i)
-    end do
-    close(23)
-
-    ! get the obs posterior information
-    open(unit=23, file='obs_post_ensemble.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
-    do i = 1, ens_size
-        read(23, REC=i) obs_post(i)
+        read(23, *) obs_prior(i)
     end do
     close(23)
 
@@ -62,22 +55,41 @@ program state_regression
     if (obs_dist == 'bnrh') then
         dist_for_obs = BOUNDED_NORMAL_RH_DISTRIBUTION
         dist_for_state = BOUNDED_NORMAL_RH_DISTRIBUTION
-        open(unit=23, file='obs_increments_bnrh.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+        ! get the obs posterior information
+        open(unit=23, file='obs_post_ensemble_bnrhf.txt', status='OLD')
+        do i = 1, ens_size
+            read(23, *) obs_post(i)
+        end do
+        close(23)
+
+        open(unit=23, file='obs_increments_bnrhf.txt', status='OLD')
     else if (obs_dist == 'kde') then
         dist_for_obs = KDE_DISTRIBUTION
         dist_for_state = KDE_DISTRIBUTION
-        open(unit=23, file='obs_increments_kde.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+        ! get the obs posterior information
+        open(unit=23, file='obs_post_ensemble_kde.txt', status='OLD')
+        do i = 1, ens_size
+            read(23, *) obs_post(i)
+        end do
+        close(23)
+        open(unit=23, file='obs_increments_kde.txt', status='OLD')
     else 
         dist_for_obs = NORMAL_DISTRIBUTION
         dist_for_state = NORMAL_DISTRIBUTION
+        ! get the obs posterior information
+        open(unit=23, file='obs_post_ensemble_norm.txt', status='OLD')
+        do i = 1, ens_size
+            read(23, *) obs_post(i)
+        end do
+        close(23)
         print *, 'Supplied observation distribution type is: ', obs_dist, '. By default, normal increments assumed.'
         print *, 'Please ensure this is correct if obs_dist is not normal in the namelist.'
-        open(unit=23, file='obs_increments_norm.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
+        open(unit=23, file='obs_increments_norm.txt', status='OLD')
     end if
 
     print *, 'Reading observation increments from obs adjustments with a ', obs_dist, ' distribution in the QCEF.'
     do i = 1, ens_size
-        read(23, REC=i) obs_inc(i)
+        read(23, *) obs_inc(i)
     end do
     close(23)
 
@@ -91,8 +103,10 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-    open(unit=23, file='ens_post_disaggregation.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
-    write(23, REC=1) ens_post
+    open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    do i = 1, ens_size
+        write(23, *) ens_post(i,:)
+    end do
     close(23)
 
     ! --- Relative Fractional -------------------------------------------------------------------------
@@ -104,8 +118,10 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by relative fractional amount: ', end_time - start_time
 
-    open(unit=23, file='ens_post_relativefrac.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
-    write(23, REC=1) ens_post
+    open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    do i = 1, ens_size
+        write(23, *) ens_post(i,:)
+    end do
     close(23)
 
     ! --- Probit + postprocessing ---------------------------------------------------------------------
@@ -116,8 +132,10 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by probit (DART default): ', end_time - start_time
 
-    open(unit=23, file='ens_post_probit_raw.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
-    write(23, REC=1) ens_post
+    open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    do i = 1, ens_size
+        write(23, *) ens_post(i, :)
+    end do
     close(23)
 
     call cpu_time(start_time)
@@ -125,8 +143,10 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for probit postprocessing: ', end_time - start_time
 
-    open(unit=23, file='ens_post_probit_postprocess.txt', access='DIRECT', form='UNFORMATTED', status='UNKNOWN', RECL=8*ens_size)
-    write(23, REC=1) ens_post
+    open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    do i = 1, ens_size
+        write(23, *) ens_post(i, :)
+    end do
     close(23)
 
     ! -------------------------------------------------------------------------------------------------

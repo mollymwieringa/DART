@@ -39,13 +39,17 @@ program obs_increments
    allocate(likelihood(ens_size))
 
    ! Read prior ensemble and observation information
-   open(unit=23,file='obs_prior_ensemble.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-   read(23,REC=1) ens
+   open(unit=23,file='obs_prior_ensemble.txt', status='OLD')
+   do i = 1, ens_size
+      read(23, *) ens(i)
+   end do
+   print *, 'ensemble: ', ens
    close(23)
 
-   open(unit=23,file='obs_info.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8)
-   read(23,REC=1) y
-   read(23,REC=2) obs_var
+   open(unit=23,file='obs_info.txt', status='OLD')
+   read(23, *) y
+   read(23, *) obs_var
+   print *, 'obs info: ', y, obs_var
    close(23)
 
    ! Get obs increments from kde+quadrature filter; write out analysis ensemble
@@ -55,12 +59,16 @@ program obs_increments
    call cpu_time(end_time)
    print *, 'Time for KDE: ', end_time - start_time
 
-   open(unit=23,file='obs_post_ensemble_kde.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-   write(23,REC=1) ens + obs_inc
+   open(unit=23,file='obs_post_ensemble_kde.txt' ,status='UNKNOWN')
+   do i = 1, ens_size
+      write(23, *) ens(i) + obs_inc(i)
+   end do
    close(23)
 
-   open(unit=23,file='obs_increments_kde.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-   write(23,REC=1) obs_inc
+   open(unit=23,file='obs_increments_kde.txt', status='UNKNOWN')
+   do i = 1, ens_size
+      write(23, *) obs_inc(i)
+   end do
    close(23)
 
    ! Get obs increments from the bnrh filter; write out analysis ensemble
@@ -84,12 +92,16 @@ program obs_increments
    call cpu_time(end_time)
    print *, 'Time for BNRHF: ', end_time - start_time
 
-   open(unit=23,file='obs_post_ensemble_bnrhf.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-   write(23,REC=1) ens + obs_inc
+   open(unit=23,file='obs_post_ensemble_bnrhf.txt', status='UNKNOWN')
+   do i = 1, ens_size
+      write(23, *) ens(i) + obs_inc(i)
+   end do
    close(23)
 
-   open(unit=23,file='obs_increments_bnrhf.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-   write(23,REC=1) obs_inc
+   open(unit=23,file='obs_increments_bnrhf.txt', status='UNKNOWN')
+   do i = 1, ens_size
+      write(23, *) obs_inc(i)
+   end do
    close(23)
 
    ! For the unbounded cases call the EAKF
@@ -101,12 +113,16 @@ program obs_increments
       y, obs_var, obs_inc, net_a)
       call cpu_time(end_time)
       print *, 'Time for EAKF: ', end_time - start_time
-      open(unit=23,file='obs_post_ensemble_norm.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-      write(23,REC=1) ens + obs_inc
+      open(unit=23,file='obs_post_ensemble_norm.txt', status='UNKNOWN')
+      do i = 1, ens_size
+         write(23, *) ens(i) + obs_inc(i)
+      end do
       close(23)
 
-      open(unit=23,file='obs_increments_norm.txt',access='DIRECT',form='UNFORMATTED',status='UNKNOWN',RECL=8*ens_size)
-      write(23,REC=1) obs_inc
+      open(unit=23,file='obs_increments_norm.txt', status='UNKNOWN')
+      do i = 1, ens_size
+         write(23,*) obs_inc(i)
+      end do
       close(23)
    endif
 
