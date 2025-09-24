@@ -70,12 +70,14 @@ module fractional_reg_mod
                 if (bounded_below) then
                     if (ens_post(i, j) < lower_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates lower bound."
+                        write(*, *) 'ensemble at error: ', ens_post
                         call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
                     end if
                 end if
                 if (bounded_above) then
                     if (ens_post(i, j) > upper_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates upper bound."
+                        write(*, *) 'ensemble at error: ', ens_post
                         call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
                     end if
                 end if
@@ -85,12 +87,14 @@ module fractional_reg_mod
                 if (sum(ens_post(i, :)) < lower_bound) then
                     write(errstring, *) "Aggregate in ensemble member ", i, "results in lower bound violation."
                     call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                    write(*, *) 'ensemble at error: ', ens_post
                 end if
             end if
             if (bounded_above) then
                 if (sum(ens_post(i, :)) > upper_bound) then
                     write(errstring, *) "Aggregate in ensemble member ", i, "results in upper bound violation."
                     call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                    write(*, *) 'ensemble at error: ', ens_post
                 end if
             end if
         end do
@@ -132,7 +136,9 @@ module fractional_reg_mod
         ! fractional amounts and save the squashing factor.
 
         nc_exp = nc + 1
-        if (all(sum(ens_prior, dim=2) < 1.0_r8)) then
+        write(*,*) 'Aggregates for ens are ', sum(ens_prior, dim=2)
+        if (all(sum(ens_prior, dim=2) <= 1.0_r8)) then
+            write(*, *) 'Expanding dimensions to include null space...'
             allocate(xhat_prior(ens_size, nc_exp))
             allocate(xhat_post(ens_size, nc_exp))
             allocate(xhat_inc(ens_size, nc_exp))
@@ -158,10 +164,12 @@ module fractional_reg_mod
             end do
         end if
 
+        write(*,*) 'a from the prior is ', a_prior
+
         ! Perform regression in relative fractional space 
         net_a = 1.0_r8    ! This is a null value; net_a is not used at this time.
         obs_prior_mean = sum(obs_prior) / ens_size
-        obs_prior_var = sum(obs_prior - obs_prior_mean)**2 / (ens_size - 1)
+        obs_prior_var = sum((obs_prior - obs_prior_mean)**2) / (ens_size - 1)
         call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, & 
                                  obs_inc, xhat_prior, ens_size, xhat_inc, &
                                  reg_coef, net_a)
@@ -173,6 +181,8 @@ module fractional_reg_mod
             ens_post(i, :) = xhat_post(i, 1:nc) / (a_post(i) * a_prior(i))
         end do
 
+        write(*,*) 'a from the posterior is ', a_post
+
         ! Verify that the updated state variables are within bounds
         do i = 1, ens_size
             ! Check A: verify that all individual state variables are within bounds
@@ -180,12 +190,14 @@ module fractional_reg_mod
                 if (bounded_below) then
                     if (ens_post(i, j) < lower_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates lower bound."
+                        write(*, *) 'ensemble at error: ', ens_post
                         call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                     end if
                 end if
                 if (bounded_above) then
                     if (ens_post(i, j) > upper_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates upper bound."
+                        write(*, *) 'ensemble at error: ', ens_post
                         call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                     end if
                 end if
@@ -194,12 +206,14 @@ module fractional_reg_mod
             if (bounded_below) then
                 if (sum(ens_post(i, :)) < lower_bound) then
                     write(errstring, *) 'Aggregate of state variable in ensemble member ', i, 'violates lower bound.'
+                    write(*, *) 'ensemble at error: ', ens_post
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
             end if
             if (bounded_above) then
                 if (sum(ens_post(i, :)) > upper_bound) then
                     write(errstring, *) 'Aggregate of state variables in ensemble member ', i, 'violates upper bound.'
+                    write(*, *) 'ensemble at error: ', ens_post
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
             end if
