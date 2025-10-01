@@ -119,7 +119,7 @@ if(bounded_above) then
    if(sort_x(ens_size) > upper_bound) then
       write(errstring, *) 'Largest ensemble member greater than upper bound', &
          sort_x(ens_size), upper_bound
-      call error_handler(E_ERR, 'bnrh_cdf', errstring, source)
+      call error_handler(E_MSG, 'bnrh_cdf', errstring, source)
    endif
 endif
 
