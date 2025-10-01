@@ -103,7 +103,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-    open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
     do i = 1, ens_size
         write(23, *) ens_post(i,:)
     end do
@@ -113,12 +113,13 @@ program state_regression
     call cpu_time(start_time)
     ! We need some approach here to make sure that everything sums to one in the prior
     ! and that nc goes up if necessary
-    call state_regress_relativefrac(obs_prior, obs_inc, ens_prior, ens_post, ens_size, nc, &
+    call state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
+                                    dist_for_obs, dist_for_state, &
                                     bounded_above, bounded_below, upper_bound, lower_bound)
     call cpu_time(end_time)
     print *, 'Time for regression by relative fractional amount: ', end_time - start_time
 
-    open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
     do i = 1, ens_size
         write(23, *) ens_post(i,:)
     end do
@@ -132,7 +133,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for regression by probit (DART default): ', end_time - start_time
 
-    open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
     do i = 1, ens_size
         write(23, *) ens_post(i, :)
     end do
@@ -143,7 +144,7 @@ program state_regression
     call cpu_time(end_time)
     print *, 'Time for probit postprocessing: ', end_time - start_time
 
-    open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=8*ens_size)
+    open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
     do i = 1, ens_size
         write(23, *) ens_post(i, :)
     end do
