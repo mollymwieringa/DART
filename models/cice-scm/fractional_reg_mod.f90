@@ -27,12 +27,15 @@ module fractional_reg_mod
     ! Subroutine to perform regression by disaggregation
     ! Does not care about the distribution of the ensemble
     subroutine state_regress_disaggregation(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                            bounded_above, bounded_below, upper_bound, lower_bound)
+                                            obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                            state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
 
         ! Declare routine variables
         integer,   intent(in) :: ens_size, nc
-        logical,   intent(in) :: bounded_above, bounded_below
-        real(r8),  intent(in) :: upper_bound, lower_bound
+        logical,   intent(in) :: state_bounded_above, state_bounded_below
+        logical,   intent(in) :: obs_bounded_above, obs_bounded_below
+        real(r8),  intent(in) :: state_upper_bound, state_lower_bound
+        real(r8),  intent(in) :: obs_upper_bound, obs_lower_bound
         real(r8),  intent(in) :: ens_prior(ens_size, nc)
         real(r8),  intent(in) :: obs_prior(ens_size), obs_post(ens_size)    
         real(r8), intent(out) :: ens_post(ens_size, nc) 
@@ -67,32 +70,34 @@ module fractional_reg_mod
         do i = 1, ens_size
             ! Check A: verify that all individual state variables are within bounds
             do j = 1, nc
-                if (bounded_below) then
-                    if (ens_post(i, j) < lower_bound) then
+                if (state_bounded_below) then
+                    if (ens_post(i, j) < state_lower_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates lower bound."
                         write(*, *) 'ensemble at error: ', ens_post
-                        call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                        call error_handler(E_MSG, 'state_regress_disaggregation', trim(errstring))
                     end if
                 end if
-                if (bounded_above) then
-                    if (ens_post(i, j) > upper_bound) then
+                if (state_bounded_above) then
+                    if (ens_post(i, j) > state_upper_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates upper bound."
                         write(*, *) 'ensemble at error: ', ens_post
-                        call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                        call error_handler(E_MSG, 'state_regress_disaggregation', trim(errstring))
                     end if
                 end if
             end do
             ! Check B: verify that the sum of all state variables is also within bounds
-            if (bounded_below) then 
-                if (sum(ens_post(i, :)) - lower_bound < -1e-8) then
+            if (state_bounded_below) then 
+                if (sum(ens_post(i, :)) - state_lower_bound < -1e-8) then
                     write(errstring, *) "Aggregate in ensemble member ", i, "results in lower bound violation. Aggregate at error: ", sum(ens_post(i,:))
-                    call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                    call error_handler(E_MSG, 'state_regress_disaggregation', trim(errstring))
                 end if
             end if
-            if (bounded_above) then
-                if (sum(ens_post(i, :)) - upper_bound > 1e-8) then
+            if (state_bounded_above) then
+                ! NOTE that this is not totally correct, as the upper bound on the aggregate may be different from the sum of the upper bounds on each category
+                !        in some applications. For now (in sea ice, where ub_agg == ub_cat for SIC), this is acceptable. 
+                if (sum(ens_post(i, :)) - state_upper_bound > 1e-8) then
                     write(errstring, *) "Aggregate in ensemble member ", i, "results in upper bound violation. Aggregate at error: ", sum(ens_post(i,:))
-                    call error_handler(E_ERR, 'state_regress_disaggregation', trim(errstring))
+                    call error_handler(E_MSG, 'state_regress_disaggregation', trim(errstring))
                 end if
             end if
         end do
@@ -103,7 +108,8 @@ module fractional_reg_mod
     ! Does not care about the distribution of the ensemble
     subroutine state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                           dist_for_obs, dist_for_state, &
-                                          bounded_above, bounded_below, upper_bound, lower_bound)
+                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
 
         ! This routine assumes that the state variables are fractional amounts that sum to one.
         ! If they are not, the method is invalid. For now, we will leave it to the user to ensure
@@ -114,12 +120,13 @@ module fractional_reg_mod
         ! Declare routine variables
         integer,   intent(in) :: ens_size, nc
         integer,   intent(in) :: dist_for_obs, dist_for_state
-        logical,   intent(in) :: bounded_above, bounded_below
+        logical,   intent(in) :: state_bounded_above, state_bounded_below
+        logical,   intent(in) :: obs_bounded_above, obs_bounded_below
         real(r8),  intent(in) :: obs_prior(ens_size), obs_post(ens_size)
         real(r8),  intent(in) :: ens_prior(ens_size, nc)
         real(r8), intent(out) :: ens_post(ens_size, nc)
-        real(r8),  intent(in) :: upper_bound, lower_bound
-
+        real(r8),  intent(in) :: state_upper_bound, state_lower_bound
+        real(r8),  intent(in) :: obs_upper_bound, obs_lower_bound
         ! Declare local variables
         character(len=100)    :: errstring
         integer               :: i, j, nc_exp
@@ -158,7 +165,8 @@ module fractional_reg_mod
             do j = 1, nc_exp
                 call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, nc_exp, &
                                           dist_for_obs, dist_for_state, &
-                                          bounded_above, bounded_below, upper_bound, lower_bound)
+                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
                 ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, &
                 !                          obs_inc, xhat_prior(:,j), ens_size, xhat_inc_j, &
                 !                          reg_coef_j, net_a)
@@ -182,7 +190,8 @@ module fractional_reg_mod
             do j = 1, nc
                 call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, nc, &
                                           dist_for_obs, dist_for_state, &
-                                          bounded_above, bounded_below, upper_bound, lower_bound)
+                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
                 ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, &
                 !                          obs_inc, xhat_prior(:,j), ens_size, xhat_inc_j, &
                 !                          reg_coef_j, net_a)
@@ -215,15 +224,15 @@ module fractional_reg_mod
         do i = 1, ens_size
             ! Check A: verify that all individual state variables are within bounds
             do j = 1, nc
-                if (bounded_below) then
-                    if (ens_post(i, j) < lower_bound) then
+                if (state_bounded_below) then
+                    if (ens_post(i, j) < state_lower_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates lower bound."
                         write(*, *) 'ensemble at error: ', ens_post
                         call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                     end if
                 end if
-                if (bounded_above) then
-                    if (ens_post(i, j) > upper_bound) then
+                if (state_bounded_above) then
+                    if (ens_post(i, j) > state_upper_bound) then
                         write(errstring, *) "State variable ", j, " in ensemble member ", i, "violates upper bound."
                         write(*, *) 'ensemble at error: ', ens_post
                         call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
@@ -231,14 +240,16 @@ module fractional_reg_mod
                 end if
             end do
             ! Check B: verify that the sum of all state variables is also within bounds
-            if (bounded_below) then
-                if (sum(ens_post(i, :)) - lower_bound < -1e-8) then
+            if (state_bounded_below) then
+                if (sum(ens_post(i, :)) - state_lower_bound < -1e-8) then
                     write(errstring, *) 'Aggregate of state variable in ensemble member ', i, 'violates lower bound. Aggreate at error: ', sum(ens_post(i,:))
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
             end if
-            if (bounded_above) then
-                if (sum(ens_post(i, :)) - upper_bound > 1e-8) then
+            if (state_bounded_above) then
+                ! NOTE that this is not totally correct, as the upper bound on the aggregate may be different from the sum of the upper bounds on each category
+                !        in some applications. For now (in sea ice, where ub_agg == ub_cat for SIC), this is acceptable.
+                if (sum(ens_post(i, :)) - state_upper_bound > 1e-8) then
                     write(errstring, *) 'Aggregate of state variables in ensemble member ', i, 'violates upper bound. Aggregate at error: ', sum(ens_post(i,:))
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
@@ -253,17 +264,19 @@ module fractional_reg_mod
     ! Because of the transform in probit space, we do care about the distribution / parameters of the ensemble.
     subroutine state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                     dist_for_obs, dist_for_state, &
-                                    bounded_above, bounded_below, upper_bound, lower_bound)
+                                    obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                    state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
 
         ! Declare routine variables
         integer,            intent(in) :: ens_size, nc
         integer,            intent(in) :: dist_for_obs, dist_for_state
-        logical,            intent(in) :: bounded_above, bounded_below
+        logical,            intent(in) :: obs_bounded_above, obs_bounded_below
+        logical,            intent(in) :: state_bounded_above, state_bounded_below
         real(r8),           intent(in) :: obs_prior(ens_size), obs_post(ens_size)
         real(r8),           intent(in) :: ens_prior(ens_size, nc)
         real(r8),          intent(out) :: ens_post(ens_size, nc)
-        real(r8),           intent(in) :: upper_bound, lower_bound
-
+        real(r8),           intent(in) :: state_upper_bound, state_lower_bound
+        real(r8),           intent(in) :: obs_upper_bound, obs_lower_bound
         ! Declare local variables
         character(len=100)             :: errstring
         integer                        :: i, j, ierr
@@ -278,16 +291,16 @@ module fractional_reg_mod
         ! 1. Transform the observation space update into probit space and recalculate the increments
         write(*,*) 'Transforming prior to probit...'
         call transform_to_probit(ens_size, obs_prior, dist_for_obs, obs_dist_params, &
-                                 probit_obs_prior, .false., bounded_below, bounded_above, &
-                                 lower_bound, upper_bound, ierr)
+                                 probit_obs_prior, .false., obs_bounded_below, obs_bounded_above, &
+                                 obs_lower_bound, obs_upper_bound, ierr)
         if (ierr /= 0) then
             write(errstring, *) "Error in transform_to_probit for observation prior"
             call error_handler(E_ERR, 'state_regress_probit', trim(errstring))
         end if
         write(*,*) 'Transforming posterior to probit...'
         call transform_to_probit(ens_size, obs_post, dist_for_obs, obs_dist_params, &
-                                 probit_obs_post, .true., bounded_below, bounded_above, &
-                                 lower_bound, upper_bound, ierr)
+                                 probit_obs_post, .true., obs_bounded_below, obs_bounded_above, &
+                                 obs_lower_bound, obs_upper_bound, ierr)
         if (ierr /= 0) then
             write(errstring, *) "Error in transform_to_probit for observation posterior"
             call error_handler(E_ERR, 'state_regress_probit', trim(errstring))
@@ -300,8 +313,8 @@ module fractional_reg_mod
         ! 2. Transform the state variables to probit space
         write(*,*) 'Transforming prior state to probit...'
         call transform_to_probit(ens_size, ens_prior, dist_for_state, state_dist_params, &
-                                 probit_ens_prior, .false., bounded_below, bounded_above, &
-                                 lower_bound, upper_bound, ierr)
+                                 probit_ens_prior, .false., state_bounded_below, state_bounded_above, &
+                                 state_lower_bound, state_upper_bound, ierr)
         if (ierr /= 0) then
             write(errstring, *) "Error in transform_to_probit for state prior"
             call error_handler(E_ERR, 'state_regress_probit', trim(errstring))
@@ -322,13 +335,18 @@ module fractional_reg_mod
     end subroutine state_regress_probit
 
     ! Subroutine to perform CICE-style postprocessing after the "regression" step
-    subroutine postprocess(ens_post, ens_size, nc, bounded_above, bounded_below, upper_bound, lower_bound)
+    subroutine postprocess(ens_post, ens_size, nc, state_bounded_above, state_bounded_below, &
+                           state_upper_bound, state_lower_bound, &
+                           obs_bounded_above, obs_bounded_below, &
+                           obs_upper_bound, obs_lower_bound)
 
         ! Declare routine variables
         integer,       intent(in) :: ens_size, nc
-        logical,       intent(in) :: bounded_above, bounded_below
+        logical,       intent(in) :: state_bounded_above, state_bounded_below
+        logical,       intent(in) :: obs_bounded_above, obs_bounded_below
         real(r8),   intent(inout) :: ens_post(ens_size, nc) ! aicen
-        real(r8),      intent(in) :: upper_bound, lower_bound
+        real(r8),      intent(in) :: state_upper_bound, state_lower_bound
+        real(r8),      intent(in) :: obs_upper_bound, obs_lower_bound
 
         ! Declare local variables 
         real(r8)                  :: agg, agg_temp, squeeze
@@ -337,27 +355,27 @@ module fractional_reg_mod
         ! Begin process
         do i = 1, ens_size
 
-            if (bounded_above) then
-               ens_post(i,:) = min(upper_bound, ens_post(i,:))   ! individual categories must not exceed 1
+            if (state_bounded_above) then
+               ens_post(i,:) = min(state_upper_bound, ens_post(i,:))   ! individual categories must not exceed 1
             end if
 
             ! calculate aggregates for posterior ensemble
             agg = sum(ens_post(i, :))
 
-            if (bounded_below) then
-                ens_post(i, :) = max(lower_bound, ens_post(i,:)) ! individual categories must be non-negative
+            if (state_bounded_below) then
+                ens_post(i, :) = max(state_lower_bound, ens_post(i,:)) ! individual categories must be non-negative
             end if
             
             ! recalculate aggregate once bounds are enforced
             agg_temp = sum(ens_post(i,:))
 
             ! Begin squeezing, if necessary
-            if (agg <= lower_bound) then
-                ens_post(i,:) = lower_bound
-            else if (agg > lower_bound) then
+            if (agg <= obs_lower_bound) then
+                ens_post(i,:) = obs_lower_bound
+            else if (agg > obs_lower_bound) then
                 do j = 1, nc
                     ! if both the constrained and unconstrained aggregates are greater than the lower bound
-                    if (agg_temp > lower_bound .and. agg > lower_bound) then
+                    if (agg_temp > obs_lower_bound .and. agg > obs_lower_bound) then
                         ! adjust each category to account for any potential "negative" volume
                         ens_post(i,j) = ens_post(i,j) - (agg_temp - agg)*ens_post(i,j)/agg_temp
                     endif
@@ -366,11 +384,15 @@ module fractional_reg_mod
                 ! recalculate the aggregate area given the recovered aggregate
                 agg = sum(ens_post(i,:))
 
-                ! if the aggregate violates the upper bound
-                if (agg > upper_bound) then
-                    ! squeeze all the categories down such that the posterior categories sum to the upper bound
-                    squeeze = upper_bound / agg
-                    ens_post(i,:) = ens_post(i,:) * squeeze
+                if (state_bounded_above) then
+                !    if the aggregate violates the upper bound
+                    ! NOTE that this is not totally correct, as the upper bound on the aggregate may be different from the sum of the upper bounds on each category
+                    !        in some applications. For now (in sea ice, where ub_agg == ub_cat for SIC), this is acceptable.
+                    if (agg > state_upper_bound) then
+                        ! squeeze all the categories down such that the posterior categories sum to the upper bound
+                        squeeze = state_upper_bound / agg
+                        ens_post(i,:) = ens_post(i,:) * squeeze
+                    end if
                 end if
             end if 
         end do 

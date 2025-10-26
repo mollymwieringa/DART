@@ -11,15 +11,19 @@ program state_regression
     integer               :: ens_size, nc
     integer               :: iunit, io, i
     integer               :: dist_for_obs, dist_for_state
-    logical               :: bounded_below, bounded_above
+    logical               :: state_bounded_below, state_bounded_above
+    logical               :: obs_bounded_below, obs_bounded_above
     character(len=128)    :: obs_dist
     real(r8)              :: start_time, end_time
-    real(r8)              :: lower_bound, upper_bound
+    real(r8)              :: state_lower_bound, state_upper_bound
+    real(r8)              :: obs_lower_bound, obs_upper_bound
     real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), ens_prior(:,:), ens_post(:,:)
 
     ! Handle namelist reading 
-    namelist / state_regression_nml / obs_dist, bounded_below, bounded_above, &
-                                           lower_bound, upper_bound, ens_size, nc
+    namelist / state_regression_nml / obs_dist, obs_bounded_below, obs_bounded_above, &
+                                      obs_lower_bound, obs_upper_bound, &
+                                      state_bounded_below, state_bounded_above, &
+                                      state_lower_bound, state_upper_bound, ens_size, nc
     
     call initialize_utilities()
 
@@ -99,7 +103,8 @@ program state_regression
     ! --- Disaggregation ------------------------------------------------------------------------------
     call cpu_time(start_time)
     call state_regress_disaggregation(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                      bounded_above, bounded_below, upper_bound, lower_bound)
+                                      obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                      state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
     call cpu_time(end_time)
     print *, 'Time for regression by disaggregation: ', end_time - start_time
 
@@ -115,7 +120,8 @@ program state_regression
     ! and that nc goes up if necessary
     call state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                     dist_for_obs, dist_for_state, &
-                                    bounded_above, bounded_below, upper_bound, lower_bound)
+                                    obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                    state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
     call cpu_time(end_time)
     print *, 'Time for regression by relative fractional amount: ', end_time - start_time
 
@@ -129,7 +135,8 @@ program state_regression
     call cpu_time(start_time)
     call state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                               dist_for_obs, dist_for_state, &
-                              bounded_above, bounded_below, upper_bound, lower_bound)
+                              obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                              state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
     call cpu_time(end_time)
     print *, 'Time for regression by probit (DART default): ', end_time - start_time
 
@@ -140,7 +147,10 @@ program state_regression
     close(23)
 
     call cpu_time(start_time)
-    call postprocess(ens_post, ens_size, nc, bounded_above, bounded_below, upper_bound, lower_bound)
+    call postprocess(ens_post, ens_size, nc, state_bounded_above, state_bounded_below, &
+                     state_upper_bound, state_lower_bound, &
+                     obs_bounded_above, obs_bounded_below, &
+                     obs_upper_bound, obs_lower_bound)
     call cpu_time(end_time)
     print *, 'Time for probit postprocessing: ', end_time - start_time
 
