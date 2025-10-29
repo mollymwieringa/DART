@@ -139,7 +139,7 @@ program state_regression
                               state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
     call cpu_time(end_time)
     print *, 'Time for regression by probit (DART default): ', end_time - start_time
-
+    
     open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
     do i = 1, ens_size
         write(23, *) ens_post(i, :)
