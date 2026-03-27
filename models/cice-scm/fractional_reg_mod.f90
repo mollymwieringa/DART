@@ -177,15 +177,17 @@ module fractional_reg_mod
             allocate(xhat_post(ens_size, nc))
             ! allocate(xhat_inc(ens_size, nc))
             ! allocate(reg_coef(nc))
-
+            open(unit=23, file=trim('alpha_prior.txt'), status='UNKNOWN', RECL=256)
             do i = 1, ens_size
                 if (sum(ens_prior(i,:)) /= 1.0_r8) then
                     a_prior(i) = 1.0_r8 / sum(ens_prior(i,:))
                 else
                     a_prior(i) = 1.0_r8
                 end if
+                write(23, *) a_prior(i)
                 xhat_prior(i,:) = a_prior(i) * ens_prior(i,:)
             end do
+            close(23)
 
             do j = 1, nc
                 call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, 1, &
@@ -199,7 +201,6 @@ module fractional_reg_mod
             end do
         end if
 
-        write(*,*) 'a from the prior is ', a_prior
 
         ! ! Perform regression in relative fractional space 
         ! net_a = 1.0_r8    ! This is a null value; net_a is not used at this time.
@@ -213,12 +214,14 @@ module fractional_reg_mod
 
         ! Calculate posterior fractional amounts
         ! xhat_post = xhat_prior + xhat_inc
+        open(unit=23, file=trim('alpha_posterior.txt'), status='UNKNOWN', RECL=256)
         do i = 1, ens_size
             a_post(i) = sum(xhat_post(i, :))
+            write(23, *) a_post(i)
             ens_post(i, :) = xhat_post(i, 1:nc) / (a_post(i) * a_prior(i))
         end do
+        close(23)
 
-        write(*,*) 'a from the posterior is ', a_post
 
         ! Verify that the updated state variables are within bounds
         do i = 1, ens_size
