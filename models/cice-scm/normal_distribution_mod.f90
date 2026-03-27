@@ -6,7 +6,7 @@ module normal_distribution_mod
 
 use types_mod, only : r8, missing_r8, digits12, PI
 
-use utilities_mod, only : E_ERR, E_ALLMSG, error_handler
+use utilities_mod, only : E_ERR, E_MSG, E_ALLMSG, error_handler
 
 use distribution_params_mod, only : distribution_params_type, NORMAL_DISTRIBUTION
 
@@ -375,7 +375,10 @@ quantile = quantile_in
 if(quantile <  0.0_r8 .or. quantile > 1.0_r8) then
    ! Need an error message
    write(errstring, *) 'Illegal Quantile input', quantile
-   call error_handler(E_ERR, 'inv_cdf', errstring, source)
+   call error_handler(E_MSG, 'inv_cdf', errstring, source)
+   if (quantile > 1.0_r8) then
+      quantile = 1.0_r8
+   endif
 endif
 
 ! If the distribution is bounded, quantiles at the limits have values at the bounds
