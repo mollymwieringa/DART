@@ -9,11 +9,11 @@ program state_regression
 
     ! Declare variables
     integer               :: ens_size, nc
-    integer               :: iunit, io, i
+    integer               :: iunit, io, i, istatus
     integer               :: dist_for_obs, dist_for_state
-    logical               :: state_bounded_below, state_bounded_above
+    logical               :: state_bounded_below, state_bounded_above, fexists
     logical               :: obs_bounded_below, obs_bounded_above
-    character(len=128)    :: obs_dist
+    character(len=128)    :: obs_dist, regression_type
     real(r8)              :: start_time, end_time
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
@@ -23,7 +23,8 @@ program state_regression
     namelist / state_regression_nml / obs_dist, obs_bounded_below, obs_bounded_above, &
                                       obs_lower_bound, obs_upper_bound, &
                                       state_bounded_below, state_bounded_above, &
-                                      state_lower_bound, state_upper_bound, ens_size, nc
+                                      state_lower_bound, state_upper_bound, &
+                                      regression_type, ens_size, nc
     
     call initialize_utilities()
 
@@ -100,65 +101,106 @@ program state_regression
     ! -------------------------------------------------------------------------------------------------
     ! PERFORM REGRESSION METHODS
     ! -------------------------------------------------------------------------------------------------
-    ! --- Disaggregation ------------------------------------------------------------------------------
-    call cpu_time(start_time)
-    call state_regress_disaggregation(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                      obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                      state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-    call cpu_time(end_time)
-    print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-    open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-    do i = 1, ens_size
-        write(23, *) ens_post(i,:)
-    end do
-    close(23)
+    if (regression_type == 'disaggregation') then
+        ! --- Disaggregation ------------------------------------------------------------------------------
+        call cpu_time(start_time)
+        call state_regress_disaggregation(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
+                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+        call cpu_time(end_time)
+        print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-    ! --- Relative Fractional -------------------------------------------------------------------------
-    call cpu_time(start_time)
-    ! We need some approach here to make sure that everything sums to one in the prior
-    ! and that nc goes up if necessary
-    call state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                    dist_for_obs, dist_for_state, &
-                                    obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                    state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-    call cpu_time(end_time)
-    print *, 'Time for regression by relative fractional amount: ', end_time - start_time
+        open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) ens_post(i,:)
+        end do
+        close(23)
+    else if (regression_type == 'relativefrac') then 
+        ! --- Relative Fractional -------------------------------------------------------------------------
+        call cpu_time(start_time)
+        ! We need some approach here to make sure that everything sums to one in the prior
+        ! and that nc goes up if necessary
+        call state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
+                                        dist_for_obs, dist_for_state, &
+                                        obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                        state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+        call cpu_time(end_time)
+        print *, 'Time for regression by relative fractional amount: ', end_time - start_time
 
-    open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-    do i = 1, ens_size
-        write(23, *) ens_post(i,:)
-    end do
-    close(23)
+        inquire(file='alpha_prior.txt', exist=fexists)
+        if (fexists) then
+            istatus = rename('alpha_prior.txt', trim('alpha_prior_')//trim(obs_dist)//trim('.txt'))
+        endif
+        istatus = rename('alpha_posterior.txt', trim('alpha_posterior_')//trim(obs_dist)//trim('.txt'))
+        
+        open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) ens_post(i,:)
+        end do
+        close(23)
+    else if (regression_type == 'probit_postprocess') then
+        ! --- Probit + postprocessing ---------------------------------------------------------------------
+        call cpu_time(start_time)
+        call state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
+                                  dist_for_obs, dist_for_state, &
+                                  obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                  state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+        call cpu_time(end_time)
+        print *, 'Time for regression by probit (DART default): ', end_time - start_time
+        
+        open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) ens_post(i, :)
+        end do
+        close(23)
 
-    ! --- Probit + postprocessing ---------------------------------------------------------------------
-    call cpu_time(start_time)
-    call state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                              dist_for_obs, dist_for_state, &
-                              obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                              state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-    call cpu_time(end_time)
-    print *, 'Time for regression by probit (DART default): ', end_time - start_time
-    
-    open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-    do i = 1, ens_size
-        write(23, *) ens_post(i, :)
-    end do
-    close(23)
+        call cpu_time(start_time)
+        call postprocess(ens_post, ens_size, nc, state_bounded_above, state_bounded_below, &
+                         state_upper_bound, state_lower_bound, &
+                         obs_bounded_above, obs_bounded_below, &
+                         obs_upper_bound, obs_lower_bound)
+        call cpu_time(end_time)
+        print *, 'Time for probit postprocessing: ', end_time - start_time
 
-    call cpu_time(start_time)
-    call postprocess(ens_post, ens_size, nc, state_bounded_above, state_bounded_below, &
-                     state_upper_bound, state_lower_bound, &
-                     obs_bounded_above, obs_bounded_below, &
-                     obs_upper_bound, obs_lower_bound)
-    call cpu_time(end_time)
-    print *, 'Time for probit postprocessing: ', end_time - start_time
+        open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) ens_post(i, :)
+        end do
+        close(23)
 
-    open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-    do i = 1, ens_size
-        write(23, *) ens_post(i, :)
-    end do
-    close(23)
+    else if (regression_type == 'linear_postprocess') then
+        ! --- Linear regression + postprocessing ----------------------------------------------------------
+        call cpu_time(start_time)
+        call state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
+                                  NORMAL_DISTRIBUTION, NORMAL_DISTRIBUTION, &
+                                  .false., .false., obs_upper_bound, obs_lower_bound, &
+                                  .false., .false., state_upper_bound, state_lower_bound)
+        call cpu_time(end_time)
+        print *, 'Time for regression by linear regression (unbounded DART default): ', end_time - start_time
+
+        open(unit=23, file=trim('ens_post_linear_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) ens_post(i, :)
+        end do
+        close(23)
+
+        call cpu_time(start_time)
+        call postprocess(ens_post, ens_size, nc, state_bounded_above, state_bounded_below, &
+                        state_upper_bound, state_lower_bound, &
+                        obs_bounded_above, obs_bounded_below, &
+                        obs_upper_bound, obs_lower_bound)
+        call cpu_time(end_time)
+        print *, 'Time for linear regression postprocessing: ', end_time - start_time
+
+        open(unit=23, file=trim('ens_post_linear_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) ens_post(i, :)
+        end do
+        close(23)
+    else
+        write(*,*) 'Regression type not recognized. Leaving this to crash...'
+    end if
 
     ! -------------------------------------------------------------------------------------------------
     ! END
