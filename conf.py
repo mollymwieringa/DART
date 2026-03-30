@@ -21,7 +21,7 @@ copyright = '2023, University Corporation for Atmospheric Research'
 author = 'Data Assimilation Research Section'
 
 # The full version, including alpha/beta/rc tags
-release = '11.14.2'
+release = '11.21.2'
 root_doc = 'index'
 
 # -- General configuration ---------------------------------------------------
@@ -39,7 +39,7 @@ extensions = [
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'models/gitm/testdata1/*',
+exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'models/gitm/testdata1/*', 'models/template/new_model.rst',
 ]
 
 
@@ -50,7 +50,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'models/gitm/testdata1/*
 #
 html_theme = 'sphinx_rtd_theme'
 html_show_sphinx = False
-html_logo = 'guide/_static/nsf-ncar-dart.png'
+html_logo = 'guide/_static/NSF-NCAR_Logo_Color-White_CMYK.webp'
 html_theme_options = {
     'logo_only': True,
     'includehidden': False
