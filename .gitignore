@@ -14,6 +14,7 @@ _site/
 .cppdefs
 
 # Nuisance files
+.ipynb_checkpoints
 
 # Makefile
 Makefile
@@ -83,6 +84,8 @@ update_mpas_states
 advance_cymdh
 cice_to_dart
 dart_to_cice
+obs_increments
+state_regression
 column_rand
 pert_sounding
 dart_to_mit
