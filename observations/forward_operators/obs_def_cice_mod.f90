@@ -32,7 +32,8 @@
 !SAT_SEAICE_AICE05,               QTY_SEAICE_AICE05,             COMMON_CODE
 !SAT_SEAICE_AGREG_FY,             QTY_SEAICE_AGREG_FY
 !SAT_SEAICE_AGREG_SURFACETEMP,    QTY_SEAICE_AGREG_SURFACETEMP
-!SAT_SEAICE_AGREG_FREEBOARD,      QTY_SEAICE_AGREG_FREEBOARD
+!SAT_SEAICE_RADAR_FREEBOARD,      QTY_SEAICE_AGREG_FREEBOARD
+!SAT_SEAICE_LASER_FREEBOARD,      QTY_SEAICE_AGREG_FREEBOARD
 !SAT_SEAICE_AGREG_CONCENTR,       QTY_SEAICE_AGREG_CONCENTR
 !SAT_SEAICE_AGREG_VOLUME,         QTY_SEAICE_AGREG_VOLUME
 !SAT_SEAICE_AGREG_SNOWVOLUME,     QTY_SEAICE_AGREG_SNOWVOLUME
@@ -42,7 +43,8 @@
 
 !-----------------------------------------------------------------------------
 ! BEGIN DART PREPROCESS USE OF SPECIAL OBS_DEF MODULE
-!  use obs_def_cice_mod, only : get_expected_agreg_freeboard, &
+!  use obs_def_cice_mod, only : get_expected_radar_freeboard, &
+!                               get_expected_laser_freeboard, &
 !                               get_expected_agreg_over_grid, &
 !                               get_expected_agreg_over_ice,  &
 !                               get_expected_agreg_thickness, &
@@ -52,10 +54,12 @@
 
 !-----------------------------------------------------------------------------
 ! BEGIN DART PREPROCESS GET_EXPECTED_OBS_FROM_DEF
-!   case(SAT_SEAICE_AGREG_FREEBOARD)
+!   case(SAT_SEAICE_RADAR_FREEBOARD)
 !      call get_expected_agreg_freeboard(state_handle, ens_size, location, &
-!               QTY_SEAICE_CONCENTR, QTY_SEAICE_VOLUME, QTY_SEAICE_SNOWVOLUME, &
-!               expected_obs, istatus)
+!               obs_kind_ind, expected_obs, istatus)
+!   case(SAT_SEAICE_LASER_FREEBOARD)
+!      call get_expected_agreg_freeboard(state_handle, ens_size, location, &
+!               obs_kind_ind, expected_obs, istatus)
 !   case(SAT_SEAICE_AGREG_THICKNESS)
 !      call get_expected_agreg_thickness(state_handle, ens_size, location, &
 !               QTY_SEAICE_VOLUME, expected_obs, istatus)
@@ -82,7 +86,8 @@
 
 !-----------------------------------------------------------------------------
 ! BEGIN DART PREPROCESS READ_OBS_DEF
-!    case(SAT_SEAICE_AGREG_FREEBOARD,   &
+!    case(SAT_SEAICE_LASER_FREEBOARD,   &
+!         SAT_SEAICE_RADAR_FREEBOARD,   &
 !         SAT_SEAICE_AGREG_THICKNESS,   &
 !         SAT_SEAICE_AGREG_SNOWDEPTH,   &
 !         SAT_SEAICE_AGREG_CONCENTR,    &
@@ -96,7 +101,8 @@
 
 !-----------------------------------------------------------------------------
 ! BEGIN DART PREPROCESS WRITE_OBS_DEF
-!    case(SAT_SEAICE_AGREG_FREEBOARD,   &
+!    case(SAT_SEAICE_LASER_FREEBOARD,   &
+!         SAT_SEAICE_RADAR_FREEBOARD,   &
 !         SAT_SEAICE_AGREG_THICKNESS,   &
 !         SAT_SEAICE_AGREG_SNOWDEPTH,   &
 !         SAT_SEAICE_AGREG_CONCENTR,    &
@@ -110,7 +116,8 @@
 
 !-----------------------------------------------------------------------------
 ! BEGIN DART PREPROCESS INTERACTIVE_OBS_DEF
-!    case(SAT_SEAICE_AGREG_FREEBOARD,   &
+!    case(SAT_SEAICE_LASER_FREEBOARD,   &
+!         SAT_SEAICE_RADAR_FREEBOARD,   &
 !         SAT_SEAICE_AGREG_THICKNESS,   &
 !         SAT_SEAICE_AGREG_SNOWDEPTH,   &
 !         SAT_SEAICE_AGREG_CONCENTR,    &
@@ -144,7 +151,9 @@ use     obs_kind_mod, only : QTY_SEAICE_VOLUME,      &
                              QTY_SEAICE_SNOWVOLUME,  &
                              QTY_SEAICE_FY,          &
                              QTY_SEAICE_SURFACETEMP, &
-                             QTY_SEAICE_CATEGORY
+                             QTY_SEAICE_CATEGORY,    &
+                             SAT_SEAICE_LASER_FREEBOARD, &
+                             SAT_SEAICE_RADAR_FREEBOARD
 
 use  ensemble_manager_mod, only : ensemble_type
 
@@ -152,16 +161,14 @@ use obs_def_utilities_mod, only : track_status
 
 implicit none
 
-public :: get_expected_agreg_freeboard, &
+public :: get_expected_radar_freeboard, &
+          get_expected_laser_freeboard, &
           get_expected_agreg_thickness, &
           get_expected_agreg_over_ice,  &
           get_expected_agreg_over_grid
 
 ! version controlled file description for error handling, do not edit
-character(len=*), parameter :: source   = &
-   "$URL$"
-character(len=*), parameter :: revision = "$Revision$"
-character(len=*), parameter :: revdate  = "$Date$"
+character(len=*), parameter :: source   = "obs_def_cice_mod"
 
 logical, save :: module_initialized = .false.
 integer       :: Ncat = 0
@@ -182,7 +189,6 @@ type(ensemble_type), intent(in)  :: state_handle
 integer,             intent(in)  :: ens_size
 
 if (module_initialized) return
-call register_module(source, revision, revdate)
 module_initialized = .true.
 
 Ncat = get_number_of_ice_categories(state_handle, ens_size)
@@ -191,9 +197,96 @@ end subroutine initialize_module
 
 
 !-----------------------------------------------------------------------------
-!> 
+!> This forward operator defines aggregate radar freeboard, which is 
+!> measured as the height of the ice/snow interface off the sea surface.
 
 subroutine get_expected_agreg_freeboard(state_handle, ens_size, location,  &
+                                        obs_type, &
+                                        agreg_fb, istatus)
+
+type(ensemble_type), intent(in)  :: state_handle
+integer,             intent(in)  :: ens_size
+type(location_type), intent(in)  :: location
+integer,             intent(in)  :: obs_type
+real(r8),            intent(out) :: agreg_fb(ens_size)
+integer,             intent(out) :: istatus(ens_size)
+
+!fb_volume is over grid, agreg_fb is over sea ice
+!for real observations we have fb
+real(r8) :: fb_volume(ens_size)
+real(r8) :: ice_volume(ens_size)
+real(r8) :: snow_volume(ens_size)
+real(r8) :: agreg_sic(ens_size)
+
+real(r8) :: loc_array(3),llat,llon
+integer  :: icat
+integer  :: istatus1(ens_size)
+integer  :: istatus2(ens_size)
+integer  :: istatus3(ens_size)
+real(r8) :: ratio
+
+type(location_type) :: location_fake
+
+real(r8), parameter :: ice_dens   =  917.0_r8, &
+                       snow_dens  =  330.0_r8, &
+                       water_dens = 1026.0_r8
+
+if (.not.module_initialized) call initialize_module(state_handle, ens_size)
+
+if (obs_type == SAT_SEAICE_LASER_FREEBOARD) then
+   ratio = snow_dens/water_dens - 1.0_r8
+elseif (obs_type == SAT_SEAICE_RADAR_FREEBOARD) then
+   ratio = snow_dens/water_dens
+else
+   istatus(:) = 1
+   return
+endif
+
+loc_array = get_location(location)
+llat = loc_array(1)
+llon = loc_array(2)
+
+istatus   = 0
+fb_volume = 0.0_r8
+agreg_fb  = 0.0_r8
+
+call get_expected_agreg_over_grid(state_handle, ens_size, location, &
+         QTY_SEAICE_CONCENTR, agreg_sic, istatus3)
+
+! model_interpolate interpolates from the model grid to a specific location
+! the 3rd variable location%z contains cat_index. The observation itself may 
+! not contain cat_index, so we need create one.
+
+do icat = 1, Ncat
+
+   location_fake = set_location(llat,llon,real(icat,r8),VERTISLEVEL)
+
+   call interpolate(state_handle, ens_size, location_fake, &
+                    QTY_SEAICE_VOLUME, ice_volume, istatus1)
+
+   call interpolate(state_handle, ens_size, location_fake, &
+                    QTY_SEAICE_SNOWVOLUME, snow_volume, istatus2)
+
+   where(istatus1==0 .and. istatus2==0) &
+     fb_volume = fb_volume + ice_volume*(1 - ice_dens/water_dens) - &
+                             snow_volume*ratio
+end do
+
+where(istatus3==0 .and. agreg_sic>1e-6_r8) agreg_fb = fb_volume/agreg_sic
+where(istatus1/=0) istatus = istatus1
+where(istatus2/=0) istatus = istatus2
+where(istatus3/=0) istatus = istatus3
+
+agreg_fb = max(agreg_fb, 0.0_r8)
+
+end subroutine get_expected_radar_freeboard
+
+
+!-----------------------------------------------------------------------------
+!> This forward operator defines laser altimeter freeboards, which are 
+!> measured as the height of the ice AND snow surface above the sea surface.
+
+subroutine get_expected_laser_freeboard(state_handle, ens_size, location,  &
                                        var_sic, var_siv, var_snv, &
                                        agreg_fb, istatus)
 
@@ -262,7 +355,7 @@ where(istatus3/=0) istatus = istatus3
 
 agreg_fb = max(agreg_fb, 0.0_r8)
 
-end subroutine get_expected_agreg_freeboard
+end subroutine get_expected_laser_freeboard
 
 
 !-----------------------------------------------------------------------------
@@ -482,13 +575,13 @@ if (get_number_of_ice_categories == MAX_CATEGORIES) then
    write(string2,*)'If you have more than ',MAX_CATEGORIES,' ice categories'
    write(string3,*)'modify "MAX_CATEGORIES", recompile and try again.'
    call error_handler(E_ERR,'get_number_of_ice_categories',string1, &
-              source, revision, revdate, text2=string2, text3=string3)
+              source, text2=string2, text3=string3)
 endif
 
 if (get_number_of_ice_categories == 0) then
    write(string1,*)'Could not determine the number of ice categories.'
    call error_handler(E_ERR,'get_number_of_ice_categories',string1, &
-              source, revision, revdate)
+              source)
 endif
 
 end function get_number_of_ice_categories

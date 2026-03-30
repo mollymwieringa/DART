@@ -19,13 +19,12 @@ use     location_mod, only : location_type, get_close_type, &
                              loc_get_close_state => get_close_state, &
                              set_location, set_location_missing, &
                              get_location, query_location, VERTISLEVEL, &
-                             VERTISHEIGHT, set_vertical
+                             VERTISHEIGHT, set_vertical, get_dist, &
+                             set_vertical_localization_coord
 
-use    utilities_mod, only : error_handler, &
-                             E_ERR, E_MSG, &
+use    utilities_mod, only : error_handler, E_ERR, E_MSG, &
                              nmlfileunit, do_output, do_nml_file, do_nml_term,  &
-                             find_namelist_in_file, check_namelist_read, &
-                             to_upper
+                             find_namelist_in_file, check_namelist_read
 
 use netcdf_utilities_mod, only : nc_add_global_attribute, nc_synchronize_file, &
                                  nc_add_global_creation_time, &
@@ -61,7 +60,9 @@ use ensemble_manager_mod, only : ensemble_type
 use default_model_mod, only : pert_model_copies, write_model_time, &
                               init_time => fail_init_time, &
                               init_conditions => fail_init_conditions, &
-                              convert_vertical_obs, adv_1step
+                              convert_vertical_obs, adv_1step, &
+                              parse_variables_clamp, &
+                              MAX_STATE_VARIABLE_FIELDS_CLAMP
 
 implicit none
 private
@@ -103,12 +104,11 @@ type(quad_interp_handle) :: interp_t_grid,  &
                             interp_u_grid,  &
                             interp_v_grid
 
+! Ocean vertical
+real(r8), allocatable :: zstar(:) ! pseudo depth for each layer
+
 ! Ocean vs land
 real(r8), allocatable :: wet(:,:), basin_depth(:,:)
-
-! DART state vector contents are specified in the input.nml:&model_nml namelist.
-integer, parameter :: MAX_STATE_VARIABLES = 10
-integer, parameter :: NUM_STATE_TABLE_COLUMNS = 3
 
 ! model_interpolate failure codes
 integer, parameter :: NOT_IN_STATE = 12
@@ -126,12 +126,15 @@ integer, parameter :: OBS_TOO_DEEP = 22
 character(len=256) :: template_file = 'mom6.r.nc'
 character(len=256) :: static_file = 'c.e22.GMOM.T62_g16.nuopc.001.mom6.static.nc'
 character(len=256) :: ocean_geometry = 'ocean_geometry.nc'
-integer  :: assimilation_period_days      = -1
-integer  :: assimilation_period_seconds   = -1
-character(len=vtablenamelength) :: model_state_variables(MAX_STATE_VARIABLES * NUM_STATE_TABLE_COLUMNS ) = ' '
+integer  :: assimilation_period_days      = 1
+integer  :: assimilation_period_seconds   = 0
+character(len=vtablenamelength) :: model_state_variables(MAX_STATE_VARIABLE_FIELDS_CLAMP) = ' '
+character(len=NF90_MAX_NAME) :: layer_name = 'Layer'
+logical :: use_pseudo_depth = .false. ! use pseudo depth instead of sum(layer thickness) for vertical location
 
 namelist /model_nml/ template_file, static_file, ocean_geometry, assimilation_period_days, &
-                     assimilation_period_seconds, model_state_variables
+                     assimilation_period_seconds, model_state_variables, layer_name, &
+                     use_pseudo_depth
 
 
 interface on_land
@@ -151,15 +154,6 @@ contains
 subroutine static_init_model()
 
 integer  :: iunit, io
-character(len=vtablenamelength) :: variable_table(MAX_STATE_VARIABLES, NUM_STATE_TABLE_COLUMNS)
-
-integer :: state_qty_list(MAX_STATE_VARIABLES)
-logical :: update_var_list(MAX_STATE_VARIABLES)
-
-! identifiers for variable_table
-integer, parameter :: VAR_NAME_INDEX = 1
-integer, parameter :: VAR_QTY_INDEX = 2
-integer, parameter :: VAR_UPDATE_INDEX = 3
 
 module_initialized = .true.
 
@@ -167,11 +161,12 @@ call find_namelist_in_file("input.nml", "model_nml", iunit)
 read(iunit, nml = model_nml, iostat = io)
 call check_namelist_read(iunit, io, "model_nml")
 
-! Record the namelist values used for the run 
+! Record the namelist values used for the run
 if (do_nml_file()) write(nmlfileunit, nml=model_nml)
 if (do_nml_term()) write(     *     , nml=model_nml)
 
 call set_calendar_type('gregorian')
+call set_vertical_localization_coord(VERTISHEIGHT)
 
 ! This time is both the minimum time you can ask the model to advance
 ! (for models that can be advanced by filter) and it sets the assimilation
@@ -181,15 +176,11 @@ call set_calendar_type('gregorian')
 assimilation_time_step = set_time(assimilation_period_seconds, &
                                   assimilation_period_days)
 
-! verify that the model_state_variables namelist was filled in correctly.
-! returns variable_table which has variable names, kinds and update strings.
-call verify_state_variables(model_state_variables, nfields, variable_table, state_qty_list, update_var_list)
-
-! Define which variables are in the model state
-dom_id = add_domain(template_file, nfields, &
-                    var_names = variable_table(1:nfields, VAR_NAME_INDEX), &
-                    kind_list = state_qty_list(1:nfields), &
-                    update_list = update_var_list(1:nfields))
+! Define which variables are in the model state;
+! parse_variables converts the character table that was read in from
+! model_nml:model_state_variables to a state_var_type that can be passed
+! to add_domain
+dom_id = add_domain(template_file, parse_variables_clamp(model_state_variables))
 
 model_size = get_domain_size(dom_id)
 
@@ -234,15 +225,16 @@ integer,            intent(out) :: istatus(ens_size)
 real(r8), parameter             :: CONCENTRATION_TO_PPT = 1000.0_r8
 
 integer  :: qty ! local qty
-integer  :: which_vert, four_ilons(4), four_ilats(4), lev(ens_size,2)
+integer  :: which_vert, four_ilons(4), four_ilats(4)
+integer  :: lev(ens_size,2), levz(2) ! level below and above obs
 integer  :: locate_status, quad_status
-real(r8) :: lev_fract(ens_size)
+real(r8) :: lev_fract(ens_size), levz_fract ! fraction between bottom and top level
 real(r8) :: lon_lat_vert(3)
 real(r8) :: quad_vals(4, ens_size)
-real(r8) :: expected(ens_size, 2) ! level below and above obs
-real(r8) :: expected_pot_temp(ens_size), expected_salinity(ens_size), pressure_dbars(ens_size)
+real(r8) :: expected(ens_size, 2)
+real(r8) :: expected_pot_temp(ens_size), expected_salinity(ens_size), pressure_bars(ens_size)
 type(quad_interp_handle) :: interp
-integer :: varid, i, e, thick_id
+integer :: varid, i, e, thick_id, corner
 integer(i8) :: th_indx
 real(r8) :: depth_at_x(ens_size), thick_at_x(ens_size) ! depth, layer thickness at obs lat lon
 logical :: found(ens_size)
@@ -268,10 +260,12 @@ if (varid < 0) then ! not in state
    return
 endif
 
-thick_id = get_varid_from_kind(dom_id, QTY_LAYER_THICKNESS)
-if (thick_id < 0) then ! thickness not in state
-   istatus = THICKNESS_NOT_IN_STATE
-   return ! HK else use pseudo depth?
+if (.not. use_pseudo_depth) then
+   thick_id = get_varid_from_kind(dom_id, QTY_LAYER_THICKNESS)
+   if (thick_id < 0) then ! thickness not in state
+      istatus = THICKNESS_NOT_IN_STATE
+      return
+   endif
 endif
 
 ! find which grid the qty is on
@@ -280,6 +274,7 @@ interp = get_interp_handle(qty)
 ! unpack the location type into lon, lat, vert, vert_type
 lon_lat_vert = get_location(location)
 which_vert   = nint(query_location(location))
+if (which_vert /= VERTISHEIGHT) call error_handler(E_ERR, 'model_interpolate', 'only supports VERTISHEIGHT')
 
 ! get the indices for the 4 corners of the quad in the horizontal
 call quad_lon_lat_locate(interp, lon_lat_vert(1), lon_lat_vert(2), &
@@ -295,57 +290,71 @@ if (on_land(four_ilons, four_ilats)) then
    return
 endif
 
-! find which layer the observation is in. Layer thickness is a state variable.
-! HK @todo Do you need to use t_grid interp for thickess four_ilons, four_ilats?
-found(:) = .false.
-depth_at_x(:) = 0
-FIND_LAYER: do i = 2, nz
+if (use_pseudo_depth) then 
 
-   ! corner1
-   th_indx = get_dart_vector_index(four_ilons(1), four_ilats(1), i, dom_id, thick_id)
-   quad_vals(1, :) = get_state(th_indx, state_handle)
-   
-   ! corner2
-   th_indx = get_dart_vector_index(four_ilons(1), four_ilats(2), i, dom_id, thick_id)
-   quad_vals(2, :) = get_state(th_indx, state_handle)
-   
-   ! corner3
-   th_indx = get_dart_vector_index(four_ilons(2), four_ilats(1), i, dom_id, thick_id)
-   quad_vals(3, :) = get_state(th_indx, state_handle)
-   
-   ! corner4
-   th_indx = get_dart_vector_index(four_ilons(2), four_ilats(2), i, dom_id, thick_id)
-   quad_vals(4, :) = get_state(th_indx, state_handle)
-   
-   call quad_lon_lat_evaluate(interp, &
-                              lon_lat_vert(1), lon_lat_vert(2), & ! lon, lat of obs
-                              four_ilons, four_ilats, &
-                              ens_size, &
-                              quad_vals, & ! 4 corners x ens_size
-                              thick_at_x, &
-                              quad_status)
-   if (quad_status /= 0) then
-      istatus(:) = THICKNESS_QUAD_EVALUATE_FAILED
+   ! Get the bounding vertical levels and the fraction between bottom and top
+   call find_level_bounds(lon_lat_vert(3), levz, levz_fract, locate_status)
+   if (locate_status /= 0) then
+      istatus(:) = locate_status
+      return
+   endif   
+   ! pseudo depth is the same for all ensemble members
+   lev(:,1) = levz(1) ! layer_below
+   lev(:,2) = levz(2) ! layer_above
+   lev_fract(:) = levz_fract
+   depth_at_x(:) = zstar(levz(1)) ! pseudo depth at obs lat lon
+else
+
+   ! find which layer the observation is in. Layer thickness is a state variable.
+   ! HK @todo Do you need to use t_grid interp for thickness four_ilons, four_ilats?
+   found(:) = .false.
+   depth_at_x(:) = 0
+   FIND_LAYER: do i = 1, nz
+
+      do corner = 1, 4
+         th_indx = get_dart_vector_index(four_ilons(corner), four_ilats(corner), i, dom_id, thick_id)
+          quad_vals(corner, :) = get_state(th_indx, state_handle)
+      enddo
+
+      
+      call quad_lon_lat_evaluate(interp, &
+                                 lon_lat_vert(1), lon_lat_vert(2), & ! lon, lat of obs
+                                 four_ilons, four_ilats, &
+                                 ens_size, &
+                                 quad_vals, & ! 4 corners x ens_size
+                                 thick_at_x, &
+                                 quad_status)
+      if (quad_status /= 0) then
+         istatus(:) = THICKNESS_QUAD_EVALUATE_FAILED
+         return
+      endif
+
+      depth_at_x = depth_at_x + thick_at_x
+
+      do e = 1, ens_size
+         if (lon_lat_vert(3) < depth_at_x(e)) then
+            if (i ==1) then 
+              lev(e,1) = 1 ! in surface layer
+              lev(e,2) = 1 ! in surface layer
+              lev_fract(e) = 0.0_r8
+              found(e) = .true.
+            else
+               lev(e,1) = i ! layer_below
+               lev(e,2) = i-1 ! layer_above
+               lev_fract(e) = (depth_at_x(e) - lon_lat_vert(3)) / thick_at_x(e)
+               found(e) = .true.
+            endif
+            if (all(found)) exit FIND_LAYER
+         endif
+      enddo
+
+   enddo FIND_LAYER
+
+   if (any(found .eqv. .false.)) then
+      istatus(:) = OBS_TOO_DEEP
       return
    endif
 
-   depth_at_x = depth_at_x + thick_at_x
-
-   do e = 1, ens_size
-      if (lon_lat_vert(3) < depth_at_x(e)) then
-         lev(e,1) = i ! layer_below
-         lev(e,2) = i-1 ! layer_above
-         lev_fract(e) = (depth_at_x(e) - lon_lat_vert(3)) / thick_at_x(e)
-         found(e) = .true.
-         if (all(found)) exit FIND_LAYER
-      endif
-   enddo
-
-enddo FIND_LAYER
-
-if (any(found .eqv. .false.)) then
-   istatus(:) = OBS_TOO_DEEP
-   return
 endif
 
 if (on_basin_edge(four_ilons, four_ilats, ens_size, depth_at_x)) then
@@ -369,9 +378,9 @@ select case (qty_in)
          return
       endif
 
-      pressure_dbars =  0.059808_r8*(exp(-0.025_r8*depth_at_x) - 1.0_r8)  &
-                        + 0.100766_r8*depth_at_x + 2.28405e-7_r8*lon_lat_vert(3)**2
-      expected_obs = sensible_temp(expected_pot_temp, expected_salinity, pressure_dbars)
+      pressure_bars =  0.059808_r8*(exp(-0.025_r8*lon_lat_vert(3)) - 1.0_r8)  &
+                        + 0.100766_r8*lon_lat_vert(3) + 2.28405e-7_r8*lon_lat_vert(3)**2
+      expected_obs = sensible_temp(expected_pot_temp, expected_salinity, pressure_bars*10.0_r8)
 
    case (QTY_SALINITY) ! convert from g of salt per kg of seawater (model) to kg of salt per kg of seawater (observation)
       call state_on_quad(four_ilons, four_ilats, lon_lat_vert, ens_size, lev, lev_fract, interp, state_handle, varid, expected_obs, quad_status)
@@ -414,7 +423,6 @@ real(r8) :: quad_vals(4, ens_size)
 real(r8) :: expected(ens_size, 2) ! state value at level below and above obs
 
 do i = 1, 2 
-   !HK which corner of the quad is which?
    ! corner1
    do e = 1, ens_size
       indx(e) = get_dart_vector_index(four_ilons(1), four_ilats(1), lev(e, i), dom_id, varid)
@@ -423,19 +431,19 @@ do i = 1, 2
 
    ! corner2
    do e = 1, ens_size
-      indx(e) = get_dart_vector_index(four_ilons(1), four_ilats(2), lev(e, i), dom_id, varid)
+      indx(e) = get_dart_vector_index(four_ilons(2), four_ilats(2), lev(e, i), dom_id, varid)
    enddo
    call get_state_array(quad_vals(2, :), indx, state_handle)
 
    ! corner3
    do e = 1, ens_size
-      indx(e) = get_dart_vector_index(four_ilons(2), four_ilats(1), lev(e, i), dom_id, varid)
+      indx(e) = get_dart_vector_index(four_ilons(3), four_ilats(3), lev(e, i), dom_id, varid)
    enddo
    call get_state_array(quad_vals(3, :), indx, state_handle)
 
    ! corner4
    do e = 1, ens_size
-      indx(e) = get_dart_vector_index(four_ilons(2), four_ilats(2), lev(e, i), dom_id, varid)
+      indx(e) = get_dart_vector_index(four_ilons(4), four_ilats(4), lev(e, i), dom_id, varid)
    enddo
    call get_state_array(quad_vals(4, :), indx, state_handle)
 
@@ -521,7 +529,23 @@ integer(i8) :: indx
 real(r8) :: depth(1)
 
 ! assert(which_vert == VERTISHEIGHT)
+if (which_vert /= VERTISHEIGHT) call error_handler(E_ERR,'model_mod convert_vertical_state', 'only supports VERTISHEIGHT')
 
+if (use_pseudo_depth) then
+   do ii = 1, num
+      if (loc_qtys(ii) == QTY_DRY_LAND) then
+         call set_vertical(locs(ii), 0.0_r8, VERTISHEIGHT)
+      else
+         call get_model_variable_indices(loc_indx(ii), i, j, k)
+         depth(1) = zstar(k) ! pseudo depth
+         call set_vertical(locs(ii), depth(1), VERTISHEIGHT)
+      endif
+   enddo
+   istatus = 0
+   return
+endif
+
+! If not using pseudo depth, then sum the layer thicknesses to get vertical location
 thick_id = get_varid_from_kind(dom_id, QTY_LAYER_THICKNESS)
 if (thick_id < 0) then
    istatus = THICKNESS_NOT_IN_STATE
@@ -594,11 +618,13 @@ type(ensemble_type), optional, intent(in)    :: ens_handle
 character(len=*), parameter :: routine = 'get_close_state'
 
 integer :: ii ! loop index
-integer :: i, j, k
+integer :: i, j, k, istatus
 real(r8) :: lon_lat_vert(3)
+integer(i8) :: ind
+
 
 call loc_get_close_state(gc, base_loc, base_type, locs, loc_qtys, loc_indx, &
-                            num_close, close_ind, dist, ens_handle)
+                            num_close, close_ind)
 
 if (.not. present(dist)) return
 
@@ -606,11 +632,22 @@ if (.not. present(dist)) return
 ! so they are not updated by assimilation
 do ii = 1, num_close
 
-  if(loc_qtys(close_ind(ii)) == QTY_DRY_LAND) dist = 1.0e9_r8
+  ind = close_ind(ii)
+  if(loc_qtys(ind) == QTY_DRY_LAND) then 
+    dist(ii) = 1.0e9_r8
+    cycle
+  endif
 
-  lon_lat_vert = get_location(locs(close_ind(ii))) ! assuming VERTISHEIGHT
-  call get_model_variable_indices(loc_indx(ii), i, j, k)
-  if ( below_sea_floor(i,j,lon_lat_vert(3)) ) dist = 1.0e9_r8
+  lon_lat_vert = get_location(locs(ind))
+  if (query_location(locs(ind)) /= VERTISHEIGHT) then ! assuming VERTISHEIGHT
+    call convert_vertical_state(ens_handle, 1, locs(ind:ind), loc_qtys(ind:ind), loc_indx(ind:ind), VERTISHEIGHT, istatus)
+  endif
+  call get_model_variable_indices(loc_indx(ind), i, j, k)
+  if ( below_sea_floor(i,j,lon_lat_vert(3)) ) then 
+    dist(ii) = 1.0e9_r8
+    cycle
+  endif
+  dist(ii) = get_dist(base_loc, locs(ind), base_type, loc_qtys(ind))
 
 enddo
 
@@ -727,7 +764,11 @@ character(len=*), parameter :: routine = 'read_num_layers'
 
 ncid = nc_open_file_readonly(template_file)
 
-call nc_get_variable_size(ncid, 'Layer', nz)
+call nc_get_variable_size(ncid, layer_name, nz)
+if (use_pseudo_depth) then
+   allocate(zstar(nz))
+   call nc_get_variable(ncid, layer_name, zstar, routine)
+endif
 
 call nc_close_file(ncid)
 
@@ -764,9 +805,9 @@ integer :: ilon(4), ilat(4) ! these are indices into lon, lat
 logical ::  on_land_quad
 
 if ( wet(ilon(1), ilat(1)) + &
-     wet(ilon(1), ilat(2)) + &
-     wet(ilon(2), ilat(1)) + &
-     wet(ilon(2), ilat(2))  < 4) then
+     wet(ilon(2), ilat(2)) + &
+     wet(ilon(3), ilat(3)) + &
+     wet(ilon(4), ilat(4))  < 4) then
    on_land_quad = .true.
 else
    on_land_quad = .false.
@@ -780,10 +821,7 @@ function on_land_point(ilon, ilat)
 integer :: ilon, ilat ! these are indices into lon, lat
 logical :: on_land_point
 
-if ( wet(ilon, ilat) + &
-     wet(ilon, ilat) + &
-     wet(ilon, ilat) + &
-     wet(ilon, ilat)  < 4) then
+if ( wet(ilon, ilat) == 0) then
    on_land_point = .true.
 else
    on_land_point = .false.
@@ -806,9 +844,9 @@ integer  :: i, e
 real(r8) :: d(4) ! basin depth at each corner
 
 d(1) = basin_depth(ilon(1), ilat(1))
-d(2) = basin_depth(ilon(1), ilat(2))
-d(3) = basin_depth(ilon(2), ilat(1))
-d(4) = basin_depth(ilon(2), ilat(2))
+d(2) = basin_depth(ilon(2), ilat(2))
+d(3) = basin_depth(ilon(3), ilat(3))
+d(4) = basin_depth(ilon(4), ilat(4))
 
 do e = 1, ens_size
    do i = 1, 4
@@ -952,7 +990,7 @@ integer, intent(in) :: qty
 
 if (on_v_grid(qty)) then
   get_interp_handle = interp_v_grid
-elseif (on_v_grid(qty)) then
+elseif (on_u_grid(qty)) then
   get_interp_handle = interp_u_grid
 else
   get_interp_handle = interp_t_grid
@@ -1018,77 +1056,6 @@ sensible_temp = t
 
 end function sensible_temp
 
-!------------------------------------------------------------------
-! Verify that the namelist was filled in correctly, and check
-! that there are valid entries for the dart_kind.
-! Returns a table with columns:
-!
-! netcdf_variable_name ; dart_qty_string ; update_string
-
-subroutine verify_state_variables(state_variables, ngood, table, qty_list, update_var)
-
-character(len=*),  intent(inout) :: state_variables(:)
-integer,           intent(out) :: ngood
-character(len=*),  intent(out) :: table(:,:)
-integer,           intent(out) :: qty_list(:)   ! kind number
-logical,           intent(out) :: update_var(:) ! logical update
-
-integer :: nrows, i
-character(len=NF90_MAX_NAME) :: varname, dartstr, update
-character(len=256) :: string1, string2
-
-if ( .not. module_initialized ) call static_init_model
-
-nrows = size(table,1)
-
-ngood = 0
-
-MyLoop : do i = 1, nrows
-
-   varname = trim(state_variables(3*i -2))
-   dartstr = trim(state_variables(3*i -1))
-   update  = trim(state_variables(3*i   ))
-   
-   call to_upper(update)
-
-   table(i,1) = trim(varname)
-   table(i,2) = trim(dartstr)
-   table(i,3) = trim(update)
-
-   if ( table(i,1) == ' ' .and. table(i,2) == ' ' .and. table(i,3) == ' ') exit MyLoop ! Found end of list.
-
-   if ( table(i,1) == ' ' .or. table(i,2) == ' ' .or. table(i,3) == ' ' ) then
-      string1 = 'model_nml:model_state_variables not fully specified'
-      call error_handler(E_ERR,'verify_state_variables',string1)
-   endif
-
-   ! Make sure DART qty is valid
-
-   qty_list(i) = get_index_for_quantity(dartstr)
-   if( qty_list(i)  < 0 ) then
-      write(string1,'(''there is no obs_kind <'',a,''> in obs_kind_mod.f90'')') trim(dartstr)
-      call error_handler(E_ERR,'verify_state_variables',string1)
-   endif
-   
-   ! Make sure the update variable has a valid name
-
-   select case (update)
-      case ('UPDATE')
-         update_var(i) = .true.
-      case ('NO_COPY_BACK')
-         update_var(i) = .false.
-      case default
-         write(string1,'(A)')  'only UPDATE or NO_COPY_BACK supported in model_state_variable namelist'
-         write(string2,'(6A)') 'you provided : ', trim(varname), ', ', trim(dartstr), ', ', trim(update)
-         call error_handler(E_ERR,'verify_state_variables',string1, text2=string2)
-   end select
-
-   ngood = ngood + 1
-enddo MyLoop
-
-
-end subroutine verify_state_variables
-
 !--------------------------------------------------------------------
 function read_model_time(filename)
 
@@ -1116,6 +1083,45 @@ read_model_time = set_time(0,dart_days)
 
 end function read_model_time
 
+!--------------------------------------------------------------------
+!                  Surface
+!                    --- 0 i=1  Interface pseudo-depth
+! Layer pseudo-depth  .
+!                    --- 1 i=2
+!                     .
+!                    --- 1 i=3
+!
+
+subroutine find_level_bounds(vert_loc, lev, lev_fract, istatus)
+
+real(r8), intent(in) :: vert_loc   ! observation location
+integer,  intent(out) :: lev(2)    ! bottom, top
+real(r8), intent(out) :: lev_fract
+integer,  intent(out) :: istatus
+
+integer :: i
+
+do i = 1, nz
+   if(vert_loc < zstar(i)) then
+      if (i == 1) then
+         lev(1) = 1 ! obs is in surface layer
+         lev(2) = 1 ! obs is in surface layer
+         lev_fract = 0.0_r8
+         istatus = 0
+         return
+      else
+         lev(1) = i   ! bottom
+         lev(2) = i-1 ! top
+         lev_fract = (zstar(lev(1)) - vert_loc) / (zstar(lev(1)) - zstar(lev(2)))
+         istatus = 0
+         return
+      endif
+   endif
+enddo
+
+istatus = OBS_TOO_DEEP
+
+end subroutine find_level_bounds
 
 !===================================================================
 ! End of model_mod
