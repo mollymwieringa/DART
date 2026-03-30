@@ -217,13 +217,23 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
 def cycle(case, assim_date, ens_size, obs_type, truth_member):
 
     icepack_path =  '/glade/derecho/scratch/mollyw/ICEPACK_RUNS/'+case+'/'
+    assim_path = icepack_path + '/assim_dir/'
     dart_path = '/glade/work/mollyw/dart_manhattan//models/cice-scm/work/'
     storage_path = '/glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'
     
     regression_type = case[12:]
 
-    # go to DART and run assimilation for this timestep
-    os.chdir(dart_path)
+    # go to assim directory and run assimilation
+    #if assim_path does not exist, make it
+    if not os.path.exists(assim_path):
+        os.makedirs(assim_path)
+    os.chdir(assim_path)
+
+    # copy over executables from the dart path
+    comd = 'cp '+dart_path+'obs_increments .'
+    os.system(comd)
+    comd = 'cp '+dart_path+'state_regression .'
+    os.system(comd)
     run_assimilation(icepack_path, storage_path, obs_type, regression_type, assim_date, ens_size, truth_member)
 
     # go to Icepack and run forecast for this timestep
