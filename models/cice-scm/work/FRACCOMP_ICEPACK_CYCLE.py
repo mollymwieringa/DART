@@ -287,6 +287,7 @@ def setup(case, spinup_case, obs_type, ens_size):
         # read namelist template
         namelist = f90nml.read('/glade/work/mollyw/Projects/fractional-comp/data/templates/icepack_in.setup')
         namelist['setup_nml']['ice_ic'] = restart_file
+        namelist['forcing_nml']['data_dir'] = '/glade/work/mollyw/Projects/cice-scm-da/data/forcings/SibChuk/free/'
         namelist['forcing_nml']['atm_data_file'] = 'ATM_FORCING_'+inst_string+'.txt'
         namelist['forcing_nml']['ocn_data_file'] = 'OCN_FORCING_'+inst_string+'.txt'
         namelist.write('icepack_in',force=True)
