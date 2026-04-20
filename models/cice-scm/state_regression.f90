@@ -188,7 +188,6 @@ program state_regression
             ens_post(:,j) = ens_post_temp
         end do
         call cpu_time(end_time)
-        print *, 'ens_post: ', ens_post
         print *, 'Time for regression by linear (DART default): ', end_time - start_time
         
         open(unit=23, file=trim('ens_post_linear_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
