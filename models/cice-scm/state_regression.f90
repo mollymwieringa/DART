@@ -8,8 +8,8 @@ program state_regression
                                         state_regress_probit, postprocess
 
     ! Declare variables
-    integer               :: ens_size, nc
-    integer               :: iunit, io, i, istatus
+    integer               :: ens_size, nc, nc_exp
+    integer               :: iunit, io, i, j, istatus
     integer               :: dist_for_obs, dist_for_state
     logical               :: state_bounded_below, state_bounded_above, fexists
     logical               :: obs_bounded_below, obs_bounded_above
@@ -17,7 +17,7 @@ program state_regression
     real(r8)              :: start_time, end_time
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
-    real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), ens_prior(:,:), ens_post(:,:)
+    real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), ens_prior(:,:), ens_post(:,:), ens_post_temp(:)
 
     ! Handle namelist reading 
     namelist / state_regression_nml / obs_dist, obs_bounded_below, obs_bounded_above, &
@@ -38,6 +38,7 @@ program state_regression
     allocate(obs_inc(ens_size))
     allocate(ens_prior(ens_size, nc))
     allocate(ens_post(ens_size, nc))
+    allocate(ens_post_temp(ens_size))
     
     ! -------------------------------------------------------------------------------------------------
     ! BEGIN 
@@ -142,10 +143,16 @@ program state_regression
     else if (regression_type == 'probit_postprocess') then
         ! --- Probit + postprocessing ---------------------------------------------------------------------
         call cpu_time(start_time)
-        call state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                  dist_for_obs, dist_for_state, &
-                                  obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                  state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+        do j = 1, nc
+            call state_regress_probit(obs_prior, obs_post, ens_prior(:,j), ens_post_temp, ens_size, 1, &
+                                      dist_for_obs, dist_for_state, &
+                                      obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                      state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+                ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, &
+                !                          obs_inc, xhat_prior(:,j), ens_size, xhat_inc_j, &
+                !                          reg_coef_j, net_a)
+            ens_post(:,j) = ens_post_temp
+        end do
         call cpu_time(end_time)
         print *, 'Time for regression by probit (DART default): ', end_time - start_time
         
@@ -172,13 +179,18 @@ program state_regression
     else if (regression_type == 'linear_postprocess') then
         ! --- Linear regression + postprocessing ----------------------------------------------------------
         call cpu_time(start_time)
-        call state_regress_probit(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                  NORMAL_DISTRIBUTION, NORMAL_DISTRIBUTION, &
-                                  .false., .false., obs_upper_bound, obs_lower_bound, &
-                                  .false., .false., state_upper_bound, state_lower_bound)
+        ! nc_exp = nc + 1
+        do j = 1, nc
+            call state_regress_probit(obs_prior, obs_post, ens_prior(:,j), ens_post_temp, ens_size, 1, &
+                                      NORMAL_DISTRIBUTION, NORMAL_DISTRIBUTION, &
+                                      .false., .false., obs_upper_bound, obs_lower_bound, &
+                                      .false., .false., state_upper_bound, state_lower_bound)
+            ens_post(:,j) = ens_post_temp
+        end do
         call cpu_time(end_time)
-        print *, 'Time for regression by linear regression (unbounded DART default): ', end_time - start_time
-
+        print *, 'ens_post: ', ens_post
+        print *, 'Time for regression by linear (DART default): ', end_time - start_time
+        
         open(unit=23, file=trim('ens_post_linear_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
         do i = 1, ens_size
             write(23, *) ens_post(i, :)
