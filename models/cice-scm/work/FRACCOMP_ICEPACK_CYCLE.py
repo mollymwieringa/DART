@@ -81,13 +81,10 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
         print('Obs. incrementing did not finish correctly! Cannot perform state regression. Exiting...')
         output = 0
         sys.exit()
-    elif (abs(np.mean(np.loadtxt('obs_increments_bnrhf.txt')) - 0.0 ) < 1e-12):
-        print('Obs. incrementing on '+date_str+' did not adjust the SIC ensemble at all! Skipping state regression and moving on to forecast step...')
-        output = 1
     else:
         comd = './state_regression > state_regression_output'
         os.system(comd)
-        print(regression_type)
+
         # update the restart file for icepack and tidy up
         if (os.path.isfile('ens_post_'+regression_type+'_bnrh.txt') is False):
             print('State regression did not finish correctly. Exiting...')
@@ -112,8 +109,11 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
 
                     # replace the aicen categories in this restart file
                     restart_ds = xr.load_dataset(restart_file)
-                    aicen_new = np.array(ens_post[mem_counter,:])
+                    hicen_old = restart_ds.vicen[:,2].values / restart_ds.aicen[:,2].values
+                    aicen_new = np.array(ens_post[mem_counter,:])  
+                    vicen_new = aicen_new * hicen_old                  
                     restart_ds['aicen'][:,2] = aicen_new
+                    restart_ds['vicen'][:,2] = vicen_new
                     restart_ds.to_netcdf(restart_file)
                     mem_counter += 1
 
