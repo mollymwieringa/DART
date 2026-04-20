@@ -55,6 +55,10 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
     comd = 'cp /glade/work/mollyw/dart_manhattan/models/cice-scm/scripts/templates/DART_input_cycle.nml input.nml'
     os.system(comd)
     dart_nml = f90nml.read('input.nml')
+    dart_nml['obs_increments_nml']['bounded_above'] = True
+    dart_nml['obs_increments_nml']['upper_bound'] = 1.0
+    dart_nml['state_regression_nml']['obs_bounded_above'] = True
+    dart_nml['state_regression_nml']['obs_upper_bound'] = 1.0
     dart_nml['state_regression_nml']['regression_type'] = regression_type
     dart_nml.write('input.nml', force=True)
 
@@ -64,9 +68,9 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
     os.system(comd)
     comd = 'cp '+storage_path+'/observations/'+obs_type+'/true_cats_info_'+date_str+'.txt true_cats_info.txt'
     os.system(comd)
-    comd = 'cp '+storage_path+'/ensemble/prior_ensemble_'+date_str+'.txt prior_ensemble.txt'
+    comd = 'cp '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+date_str+'.txt prior_ensemble.txt'
     os.system(comd)
-    comd = 'cp '+storage_path+'/ensemble/obs_prior_ensemble_'+date_str+'.txt obs_prior_ensemble.txt'
+    comd = 'cp '+storage_path+'/'+case+'/ensemble/obs_prior_ensemble_'+date_str+'.txt obs_prior_ensemble.txt'
     os.system(comd)
 
     # run assimilation steps
@@ -77,10 +81,13 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
         print('Obs. incrementing did not finish correctly! Cannot perform state regression. Exiting...')
         output = 0
         sys.exit()
+    elif (abs(np.mean(np.loadtxt('obs_increments_bnrhf.txt')) - 0.0 ) < 1e-12):
+        print('Obs. incrementing on '+date_str+' did not adjust the SIC ensemble at all! Skipping state regression and moving on to forecast step...')
+        output = 1
     else:
         comd = './state_regression > state_regression_output'
         os.system(comd)
-        
+        print(regression_type)
         # update the restart file for icepack and tidy up
         if (os.path.isfile('ens_post_'+regression_type+'_bnrh.txt') is False):
             print('State regression did not finish correctly. Exiting...')
@@ -106,25 +113,38 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
                     # replace the aicen categories in this restart file
                     restart_ds = xr.load_dataset(restart_file)
                     aicen_new = np.array(ens_post[mem_counter,:])
-                    restart_ds.isel({'ni':2})['aicen'] = ('ncat', aicen_new)
+                    restart_ds['aicen'][:,2] = aicen_new
                     restart_ds.to_netcdf(restart_file)
                     mem_counter += 1
 
             # move state_regression output to project output directory 
+            comd=f'mv obs_info.txt '+day_path+'/obs_info.txt'
+            os.system(comd)
+            comd=f'mv obs_prior_ensemble.txt '+day_path+'/obs_prior_ensemble.txt'
+            os.system(comd)
             comd=f'mv obs_post_ensemble_bnrhf.txt '+day_path+'/obs_post_ensemble.txt'
             os.system(comd)
             comd = f'mv obs_increments_bnrhf.txt '+day_path+'/obs_increments.txt'
             os.system(comd)
+            comd= f'mv true_cats_info.txt '+day_path+'/true_cats_info.txt'
+            os.system(comd)
+            comd=f'mv prior_ensemble.txt '+day_path+'/prior_ensemble.txt'
+            os.system(comd)
             comd=f'mv ens_post_'+regression_type+'_bnrh.txt '+day_path+'/ens_post_'+regression_type+'.txt'
             os.system(comd)
+            comd=f'mv state_regression_output '+day_path+'/state_regression_output'
+            os.system(comd)
+            comd=f'mv obs_increment_output '+day_path+'/obs_increment_output'
+            os.system(comd)
+
             if regression_type in ['probit_postprocess', 'linear_postprocess']:
                 comd=f'mv ens_post_'+regression_type[:-12]+'_raw_bnrh.txt '+day_path+'/ens_post_'+regression_type[:-12]+'_raw.txt'
                 os.system(comd)
-            if os.path.isfile('alpha_prior.txt'):
-                comd=f'mv alpha_prior.txt '+day_path+'/alpha_prior.txt'
+            if os.path.isfile('alpha_prior_bnrh.txt'):
+                comd=f'mv alpha_prior_bnrh.txt '+day_path+'/alpha_prior.txt'
                 os.system(comd)
-            if os.path.isfile('alpha_posterior.txt'):
-                comd=f'mv alpha_posterior.txt '+day_path+'/alpha_posterior.txt'
+            if os.path.isfile('alpha_posterior_bnrh.txt'):
+                comd=f'mv alpha_posterior_bnrh.txt '+day_path+'/alpha_posterior.txt'
                 os.system(comd)
             output = 1
 
@@ -145,6 +165,7 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
         # update namelist with date info
         icepack_nml = f90nml.read('icepack_in')
         icepack_nml['setup_nml']['ice_ic'] = icepack_path + '/mem'+inst_string+'/restart/iced.'+date_str+'-00000.nc'
+        icepack_nml['setup_nml']['runtype_startup'] = False
         icepack_nml.write('icepack_in', force=True)
 
         # run the model
@@ -207,9 +228,9 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
         # os.system(comd)
 
     # move the new ensemble text files
-    comd = 'mv new_prior_ensemble.txt '+storage_path+'/ensemble/prior_ensemble_'+next_day_str+'.txt'
+    comd = 'mv new_prior_ensemble.txt '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+next_day_str+'.txt'
     os.system(comd)
-    comd = 'mv new_obs_prior_ensemble.txt '+storage_path+'/ensemble/obs_prior_ensemble_'+next_day_str+'.txt'
+    comd = 'mv new_obs_prior_ensemble.txt '+storage_path+'/'+case+'/ensemble/obs_prior_ensemble_'+next_day_str+'.txt'
     os.system(comd)
 
     return output
@@ -247,7 +268,7 @@ def setup(case, spinup_case, obs_type, ens_size):
     and associated observations have already been created"""
 
     os.chdir('/glade/work/mollyw/Icepack/')
-    comd = './icepack.setup -c '+case+' -m derecho -e intel'
+    comd = './icepack.setup -c '+case+' -m derecho -e inteloneapi'
     os.system(comd)
 
     # go to the case directory
@@ -261,6 +282,9 @@ def setup(case, spinup_case, obs_type, ens_size):
     storage_dir = '/glade/derecho/scratch/mollyw/ICEPACK_RUNS/' + case
     if os.path.exists(storage_dir) is False:
         print('Model did not build correctly! Please rebuild model.')
+
+    if os.path.exists('/glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/') is False:
+        os.makedirs('/glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/')
 
     mem = 1
     while mem <= ens_size:
@@ -287,6 +311,9 @@ def setup(case, spinup_case, obs_type, ens_size):
         # read namelist template
         namelist = f90nml.read('/glade/work/mollyw/Projects/fractional-comp/data/templates/icepack_in.setup')
         namelist['setup_nml']['ice_ic'] = restart_file
+        namelist['setup_nml']['input_lat'] = 1.3183906501
+        namelist['setup_nml']['input_lon'] = 3.0446500856
+        namelist['setup_nml']['runtype_startup'] = True
         namelist['forcing_nml']['data_dir'] = '/glade/work/mollyw/Projects/cice-scm-da/data/forcings/SibChuk/free/'
         namelist['forcing_nml']['atm_data_file'] = 'ATM_FORCING_'+inst_string+'.txt'
         namelist['forcing_nml']['ocn_data_file'] = 'OCN_FORCING_'+inst_string+'.txt'
@@ -307,7 +334,7 @@ def setup(case, spinup_case, obs_type, ens_size):
             else:
                 inst_string ='{0}'.format('%04d' % mem) 
                 new_restart_file = '/glade/derecho/scratch/mollyw/ICEPACK_RUNS/'+case+'/mem'+inst_string+'/restart/iced.2011-01-02-00000.nc'
-                restart_ds = xr.open_dataset(new_restart_file).isel({'ni':2})
+                restart_ds = xr.load_dataset(new_restart_file).isel({'ni':2})
                 prior_values = restart_ds.aicen.values
                 for i, val in enumerate(prior_values):
                     if i < 4:
@@ -325,7 +352,7 @@ def setup(case, spinup_case, obs_type, ens_size):
             else:
                 inst_string ='{0}'.format('%04d' % mem) 
                 new_restart_file = '/glade/derecho/scratch/mollyw/ICEPACK_RUNS/'+case+'/mem'+inst_string+'/restart/iced.2011-01-02-00000.nc'
-                restart_ds = xr.open_dataset(new_restart_file).isel({'ni':2})
+                restart_ds = xr.load_dataset(new_restart_file).isel({'ni':2})
                 if obs_type == 'SIC':
                     obs_prior_value = restart_ds.aicen.sum(dim='ncat').values
                 elif obs_type =='SIT':
@@ -337,12 +364,12 @@ def setup(case, spinup_case, obs_type, ens_size):
             mem += 1
 
     # move the new ensemble text files
-    comd = 'mv '+storage_dir+'/first_prior_ensemble.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/ensemble/prior_ensemble_2011-01-02.txt'
+    comd = 'mv '+storage_dir+'/first_prior_ensemble.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/prior_ensemble_2011-01-02.txt'
     os.system(comd)
-    comd = 'mv '+storage_dir+'/first_obs_prior_ensemble.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/ensemble/obs_prior_ensemble_2011-01-02.txt'
+    comd = 'mv '+storage_dir+'/first_obs_prior_ensemble.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/obs_prior_ensemble_2011-01-02.txt'
     os.system(comd)
 
-    # write the first round of prior ensemble files to /glade/work/mollyw/Projects/fractional-comp/experiment_output/online//ensemble/
+    # write the first round of prior ensemble files to /glade/work/mollyw/Projects/fractional-comp/experiment_output/online/'+case+'/ensemble/'
 
     return
 
