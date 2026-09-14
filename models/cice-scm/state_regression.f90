@@ -14,17 +14,18 @@ program state_regression
     logical               :: state_bounded_below, state_bounded_above, fexists
     logical               :: obs_bounded_below, obs_bounded_above
     character(len=128)    :: obs_dist, regression_type
-    real(r8)              :: start_time, end_time
+    real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
     real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), ens_prior(:,:), ens_post(:,:), ens_post_temp(:)
+    real(r8), allocatable :: asprd(:), fsprd(:), mean(:), inflate_cat(:)
 
     ! Handle namelist reading 
     namelist / state_regression_nml / obs_dist, obs_bounded_below, obs_bounded_above, &
                                       obs_lower_bound, obs_upper_bound, &
                                       state_bounded_below, state_bounded_above, &
                                       state_lower_bound, state_upper_bound, &
-                                      regression_type, ens_size, nc
+                                      regression_type, ens_size, inflate, nc
     
     call initialize_utilities()
 
@@ -39,6 +40,10 @@ program state_regression
     allocate(ens_prior(ens_size, nc))
     allocate(ens_post(ens_size, nc))
     allocate(ens_post_temp(ens_size))
+    allocate(asprd(nc))
+    allocate(fsprd(nc))
+    allocate(mean(nc))
+    allocate(inflate_cat(nc))
     
     ! -------------------------------------------------------------------------------------------------
     ! BEGIN 
@@ -49,6 +54,12 @@ program state_regression
         read(23, *) ens_prior(i,:)
     end do
     close(23)
+
+    ! calculate the ens_prior spread across ensemble member for each state variable
+    do j = 1, nc
+        mean(j) = sum(ens_prior(:,j)) / real(ens_size, r8)
+        fsprd(j) = sqrt(sum((ens_prior(:,j) - mean(j))**2) / real(ens_size-1, r8))
+    end do
 
     ! get the obs prior ensemble information
     open(unit=23, file='obs_prior_ensemble.txt', status='OLD')
@@ -112,11 +123,12 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-        open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) ens_post(i,:)
-        end do
-        close(23)
+        ! open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        ! do i = 1, ens_size
+        !     write(23, *) ens_post(i,:)
+        ! end do
+        ! close(23)
+
     else if (regression_type == 'relativefrac') then 
         ! --- Relative Fractional -------------------------------------------------------------------------
         call cpu_time(start_time)
@@ -135,11 +147,12 @@ program state_regression
         endif
         istatus = rename('alpha_posterior.txt', trim('alpha_posterior_')//trim(obs_dist)//trim('.txt'))
         
-        open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) ens_post(i,:)
-        end do
-        close(23)
+        ! open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        ! do i = 1, ens_size
+        !     write(23, *) ens_post(i,:)
+        ! end do
+        ! close(23)
+
     else if (regression_type == 'probit_postprocess') then
         ! --- Probit + postprocessing ---------------------------------------------------------------------
         call cpu_time(start_time)
@@ -170,11 +183,11 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for probit postprocessing: ', end_time - start_time
 
-        open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) ens_post(i, :)
-        end do
-        close(23)
+        ! open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        ! do i = 1, ens_size
+        !     write(23, *) ens_post(i, :)
+        ! end do
+        ! close(23)
 
     else if (regression_type == 'linear_postprocess') then
         ! --- Linear regression + postprocessing ----------------------------------------------------------
@@ -204,14 +217,46 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for linear regression postprocessing: ', end_time - start_time
 
-        open(unit=23, file=trim('ens_post_linear_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) ens_post(i, :)
-        end do
-        close(23)
+        ! open(unit=23, file=trim('ens_post_linear_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+        ! do i = 1, ens_size
+        !     write(23, *) ens_post(i, :)
+        ! end do
+        ! close(23)
     else
         write(*,*) 'Regression type not recognized. Leaving this to crash...'
     end if
+
+    !--------------------------------------------------------------------------------------------------
+    ! Do RTPS posterior inflation
+    !--------------------------------------------------------------------------------------------------
+    do j = 1, nc
+        mean(j) = sum(ens_post(:,j)) / real(ens_size, r8)
+        asprd(j) = sqrt(sum((ens_post(:,j) - mean(j))**2) / real(ens_size-1, r8))
+    end do
+
+    do j = 1, nc
+        if (asprd(j) .gt. 0.0_r8 .and. fsprd(j) .gt. 0.0_r8) then
+            inflate_cat(j) = 1.0_r8 + inflate * ((fsprd(j)-asprd(j)) / asprd(j))
+        else
+            inflate_cat(j) = 1.0_r8
+        end if
+        ens_post(:,j) = ens_post(:,j) * inflate_cat(j) + mean(j) * (1.0_r8 - inflate_cat(j))
+    end do
+
+    !--------------------------------------------------------------------------------------------------
+    ! Write the final posterior ensemble and inflation factors to file
+    !--------------------------------------------------------------------------------------------------
+    open(unit=23, file=trim('ens_post_')//trim(regression_type)//trim('_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+    do i = 1, ens_size
+        write(23, *) ens_post(i, :)
+    end do
+    close(23)
+
+    open(unit=23, file=trim('inflation_')//trim(regression_type)//trim('_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
+    do j = 1, nc
+        write(23, *) inflate_cat(j)
+    end do
+    close(23)
 
     ! -------------------------------------------------------------------------------------------------
     ! END
