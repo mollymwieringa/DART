@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 ###############################################################
 # SET MANUAL INPUTS HERE                                      #
 ###############################################################
-loc = sys.argv[1] #must be CentArc Barents SibChuk
+loc = sys.argv[1] #must be CentralArctic Barents SibChuk
 obs_type=sys.argv[2]
 regression_type = sys.argv[3]
 truth_member = sys.argv[4]
@@ -25,8 +25,8 @@ end_assim_date = datetime(int(sys.argv[8]),int(sys.argv[9]),int(sys.argv[10]))
 
 ens_size = 30
 
-case = loc+'_'+obs_type+'_'+regression_type
-spinup_case = 'SPINUP_SibChuk'
+case = loc+'_'+obs_type+'_'+regression_type+'_'+truth_member
+spinup_case = 'SPINUP_'+loc
 ###############################################################
 # DEFINE HELPER FUNCTIONS                                     #
 ###############################################################
@@ -64,9 +64,9 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
 
 
     # bring in observation info
-    comd = 'cp '+storage_path+'/observations/'+obs_type+'/obs_info_'+date_str+'.txt obs_info.txt'
+    comd = 'cp '+storage_path+'/observations/'+loc+'/member_'+truth_member+'/'+obs_type+'/obs_info_'+date_str+'.txt obs_info.txt'
     os.system(comd)
-    comd = 'cp '+storage_path+'/observations/'+obs_type+'/true_cats_info_'+date_str+'.txt true_cats_info.txt'
+    comd = 'cp '+storage_path+'/observations/'+loc+'/member_'+truth_member+'/'+obs_type+'/true_cats_info_'+date_str+'.txt true_cats_info.txt'
     os.system(comd)
     comd = 'cp '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+date_str+'.txt prior_ensemble.txt'
     os.system(comd)
@@ -107,11 +107,45 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
                     comd = f'cp '+restart_file+' '+icepack_path+'/mem'+inst_string+'/restart/iced.'+date_str+'-00000_original.nc'
                     os.system(comd)
 
-                    # replace the aicen categories in this restart file
+                    # replace the sea ice categories in the restart file
+                    aicen_new = np.array(ens_post[mem_counter,:])
+                    vicen_new = np.zeros_like(aicen_new)
+
+                    # address the three cases for adjusting vicen based on the new aicen
                     restart_ds = xr.load_dataset(restart_file)
-                    hicen_old = restart_ds.vicen[:,2].values / restart_ds.aicen[:,2].values
-                    aicen_new = np.array(ens_post[mem_counter,:])  
-                    vicen_new = aicen_new * hicen_old                  
+                    aicen_old = restart_ds.aicen[:,2].values
+                    vicen_old = restart_ds.vicen[:,2].values
+                    hicen_old = vicen_old / aicen_old
+                    hicen_old = np.nan_to_num(hicen_old, nan=0.0, posinf=0.0, neginf=0.0)
+                    hicen_midpoints = [np.float64(0.3222536084097129), 
+                                       np.float64(1.0179703571978647), 
+                                       np.float64(1.9308064397680962), 
+                                       np.float64(3.51873365040519), 
+                                       np.float64(6.950564867359333)]
+
+                    for i in range(len(aicen_new)):
+                        # 1. if ice area is present in both old and new  
+                        if (aicen_new[i] > 0) and (aicen_old[i] > 0):
+                            if (aicen_new[i] <= 1e-6):
+                                vicen_new[i] = aicen_new[i] * hicen_midpoints[i]
+                            else:
+                                vicen_new[i] = aicen_new[i] * hicen_old[i]
+                        # 2. there was no ice, but DA added ice area 
+                        elif (aicen_new[i] > 0) and (aicen_old[i] <= 0):
+                            vicen_new[i] = aicen_new[i] * hicen_midpoints[i]    
+                        # 3. there was ice area, but DA removed it  
+                        elif (aicen_new[i] <= 0) and (aicen_old[i] > 0):
+                            vicen_new[i] = aicen_new[i] * 0.0
+                        # 4. there was no ice and there is still no ice
+                        elif (aicen_new[i] <= 0) and (aicen_old[i] <= 0):
+                            vicen_new[i] = aicen_new[i] * 0.0
+                        else:
+                            print(aicen_new[i], aicen_old[i])
+                            print('crash at ncat: '+str(i))
+                            print('You should not be here! Some logic was not accounted for in the DA update of the restart file. Please check the code and fix! Exiting...')
+                            sys.exit()
+
+                    # replace values in the restart file and save
                     restart_ds['aicen'][:,2] = aicen_new
                     restart_ds['vicen'][:,2] = vicen_new
                     restart_ds.to_netcdf(restart_file)
@@ -242,7 +276,9 @@ def cycle(case, assim_date, ens_size, obs_type, truth_member):
     dart_path = '/glade/work/mollyw/dart_manhattan//models/cice-scm/work/'
     storage_path = '/glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'
     
-    regression_type = case[12:]
+    startdigits = len(case.split('_')[0]) + len (case.split('_')[1]) + 2
+    enddigits = len(case.split('_')[-1]) + 1
+    regression_type = case[startdigits:-enddigits]
 
     # go to assim directory and run assimilation
     #if assim_path does not exist, make it
@@ -286,6 +322,14 @@ def setup(case, spinup_case, obs_type, ens_size):
     if os.path.exists('/glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/') is False:
         os.makedirs('/glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/')
 
+    # get the location, based on the case name 
+    locs = {'Barents': [1.309, 0.698132], 
+            'CoastalCanada': [1.41372, 6.24828], 
+            'SibChuk': [1.3183906501, 3.0446500856], 
+            'CentralArctic': [1.53589, 0]}
+    lat = locs[case.split('_')[0]][0]
+    lon = locs[case.split('_')[0]][1]
+
     mem = 1
     while mem <= ens_size:
         inst_string ='{0}'.format('%04d' % mem) 
@@ -311,10 +355,10 @@ def setup(case, spinup_case, obs_type, ens_size):
         # read namelist template
         namelist = f90nml.read('/glade/work/mollyw/Projects/fractional-comp/data/templates/icepack_in.setup')
         namelist['setup_nml']['ice_ic'] = restart_file
-        namelist['setup_nml']['input_lat'] = 1.3183906501
-        namelist['setup_nml']['input_lon'] = 3.0446500856
+        namelist['setup_nml']['input_lat'] = lat
+        namelist['setup_nml']['input_lon'] = lon
         namelist['setup_nml']['runtype_startup'] = True
-        namelist['forcing_nml']['data_dir'] = '/glade/work/mollyw/Projects/cice-scm-da/data/forcings/SibChuk/free/'
+        namelist['forcing_nml']['data_dir'] = '/glade/work/mollyw/Projects/cice-scm-da/data/forcings/'+case.split('_')[0]+'/free/'
         namelist['forcing_nml']['atm_data_file'] = 'ATM_FORCING_'+inst_string+'.txt'
         namelist['forcing_nml']['ocn_data_file'] = 'OCN_FORCING_'+inst_string+'.txt'
         namelist.write('icepack_in',force=True)
@@ -377,10 +421,10 @@ def setup(case, spinup_case, obs_type, ens_size):
 # PERFORM CYCLING                                             #
 ###############################################################
 
-start = perf_counter()
-setup(case, spinup_case, obs_type, ens_size)
-end = perf_counter()
-print(f'Setup for the case took {(end-start)/60:0.4f} minutes.')
+# start = perf_counter()
+# setup(case, spinup_case, obs_type, ens_size)
+# end = perf_counter()
+# print(f'Setup for the case took {(end-start)/60:0.4f} minutes.')
 
 start = perf_counter()
 datelist = pd.date_range(start=first_assim_date, end=end_assim_date).to_pydatetime()
