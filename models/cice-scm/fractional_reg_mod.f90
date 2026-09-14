@@ -111,11 +111,10 @@ module fractional_reg_mod
                                           obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                           state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
 
-        ! This routine assumes that the state variables are fractional amounts that sum to one.
-        ! If they are not, the method is invalid. For now, we will leave it to the user to ensure
-        ! that the incoming ens_prior meets this requirement.
-        ! In the case of representing a quantity whose aggregate can vary between 0 and 1, one 
-        ! valid approach would be to calculate and attach a "null" category to the state vector.
+        ! This routine assumes that the state variables are fractional amounts whose sum is constrained to be 
+        ! to be less than or equal to 1.0. It assumes observations used to update the system are of the 
+        ! sum of all state categories, and thus also reflect change in a "null category" that is not explicitly
+        ! represented in the state vector. 
 
         ! Declare routine variables
         integer,   intent(in) :: ens_size, nc
@@ -129,99 +128,78 @@ module fractional_reg_mod
         real(r8),  intent(in) :: obs_upper_bound, obs_lower_bound
         ! Declare local variables
         character(len=100)    :: errstring
-        integer               :: i, j, nc_exp
-        real(r8)              :: exp_prior(ens_size, nc+1)
-        real(r8), allocatable :: xhat_prior(:, :) !, reg_coef(:)
-        real(r8), allocatable :: xhat_post(:, :) !, xhat_inc(:, :) 
-        real(r8)              :: a_prior(ens_size), a_post(ens_size), xhat_post_j(ens_size)
-        ! real(r8)              :: net_a, reg_coef_j, obs_prior_mean, obs_prior_var
+        integer               :: i, j
+        real(r8)              :: mass_check
+        real(r8)              :: xhat_prior(ens_size, nc), xhat_post(ens_size, nc)
+        real(r8)              :: a_post(ens_size), xhat_post_j(ens_size), Np(ens_size), Na(ens_size), obs_inc(ens_size)
 
+        ! Translate x_prior into xhat_prior (assumes multiplication by a_prior, which is always 1.0)
+        xhat_prior = ens_prior
 
-        ! net_a = 1.0_r8    ! This is a null value; net_a is not used at this time.
-        ! obs_prior_mean = sum(obs_prior) / ens_size
-        ! obs_prior_var = sum((obs_prior - obs_prior_mean)**2) / (ens_size - 1)
+        ! Calculate the prior null category, Np
+        Np = 1.0_r8 - sum(ens_prior, dim=2)
 
-        ! Calculate the fractional amounts
-        ! Verify that the sum of each ensemble member in ens_prior is 1.0
-        ! If not, either add a "null category" if less than 1.0 OR squash down to relative
-        ! fractional amounts and save the squashing factor.
+        ! Calculate the posterior null category, Na 
+        obs_inc = obs_post - obs_prior
+        Na = Np - obs_inc
 
-        nc_exp = nc + 1
-        write(*,*) 'Aggregates for ens are ', sum(ens_prior, dim=2)
-        if (all(sum(ens_prior, dim=2) < 1.0_r8)) then
-            write(*, *) 'Expanding dimensions to include null space...'
-            allocate(xhat_prior(ens_size, nc_exp))
-            allocate(xhat_post(ens_size, nc_exp))
-            ! allocate(xhat_inc(ens_size, nc_exp))
-            ! allocate(reg_coef(nc_exp))
+        ! Regress in the space of the fractional amounts
+        do j = 1, nc
+            call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, 1, &
+                                      dist_for_obs, dist_for_state, &
+                                      obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
+                                      state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+            xhat_post(:,j) = xhat_post_j
+        end do
 
-            do i = 1, ens_size
-                exp_prior(i, 1:nc) = ens_prior(i, :)
-                exp_prior(i, nc_exp) = 1.0_r8 - sum(ens_prior(i, :))
-                a_prior(i) = 1.0_r8
-                xhat_prior(i, :) = a_prior(i) * exp_prior(i, :)
-            end do
+        ! ! Check that the regression reflects the observation increment across categories
+        ! do i = 1, ens_size
+        !     ! if the summed change to categories differs from the obs inc by more than 0.1
+        !     mass_check = obs_inc(i) - sum(xhat_post(i, :) - xhat_prior(i, :))
+        !     if (abs(mass_check) > 0.1_r8) then
+        !         write(errstring, *) "Summed change to categories for ensemble member ", i, " differs from obs inc by more than 0.1."
+        !         call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+        !         if (mass_check > 0.0_r8) then
+        !             write(errstring, *) "regression did not add enough mass to the system. Mass check value: ", mass_check
+        !             call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+        !             xhat_post(i, 1) = xhat_post(i, 1) + mass_check * Np(i) / (Np(i) + sum(xhat_prior(i, 2:)))
+        !         else if (mass_check < 0.0_r8) then
+        !             write(errstring, *) "regression added too much mass to the system. Mass check value: ", mass_check
+        !             call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+        !             xhat_post(i, 1) = xhat_post(i, 1) + mass_check * xhat_post(i, 1) / sum(xhat_post(i, :))
+        !         else
+        !             write(errstring, *) "regression added the correct amount of mass to the system. Mass check value: ", mass_check
+        !             call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+        !         end if
+        !     end if
+        ! end do
 
-            do j = 1, nc_exp
-                call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, 1, &
-                                          dist_for_obs, dist_for_state, &
-                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-                ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, &
-                !                          obs_inc, xhat_prior(:,j), ens_size, xhat_inc_j, &
-                !                          reg_coef_j, net_a)
-                xhat_post(:,j) = xhat_post_j
-            end do
-        else
-            allocate(xhat_prior(ens_size, nc))
-            allocate(xhat_post(ens_size, nc))
-            ! allocate(xhat_inc(ens_size, nc))
-            ! allocate(reg_coef(nc))
-            open(unit=23, file=trim('alpha_prior.txt'), status='UNKNOWN', RECL=256)
-            do i = 1, ens_size
-                if (sum(ens_prior(i,:)) /= 1.0_r8) then
-                    a_prior(i) = 1.0_r8 / sum(ens_prior(i,:))
-                else
-                    a_prior(i) = 1.0_r8
-                end if
-                write(23, *) a_prior(i)
-                xhat_prior(i,:) = a_prior(i) * ens_prior(i,:)
-            end do
-            close(23)
-
-            do j = 1, nc
-                call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, 1, &
-                                          dist_for_obs, dist_for_state, &
-                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-                ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, &
-                !                          obs_inc, xhat_prior(:,j), ens_size, xhat_inc_j, &
-                !                          reg_coef_j, net_a)
-                xhat_post(:,j) = xhat_post_j
-            end do
-        end if
-
-
-        ! ! Perform regression in relative fractional space 
-        ! net_a = 1.0_r8    ! This is a null value; net_a is not used at this time.
-        ! obs_prior_mean = sum(obs_prior) / ens_size
-        ! obs_prior_var = sum((obs_prior - obs_prior_mean)**2) / (ens_size - 1)
-        ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, & 
-        !                          obs_inc, xhat_prior, ens_size, xhat_inc, &
-        !                          reg_coef, net_a)
-
-        ! write(*,*) 'reg_coef is ', reg_coef
-
-        ! Calculate posterior fractional amounts
-        ! xhat_post = xhat_prior + xhat_inc
+        ! Calculate a_post and use it to translate back from xhat_post to ens_post
         open(unit=23, file=trim('alpha_posterior.txt'), status='UNKNOWN', RECL=256)
         do i = 1, ens_size
-            a_post(i) = sum(xhat_post(i, :))
-            write(23, *) a_post(i)
-            ens_post(i, :) = xhat_post(i, 1:nc) / (a_post(i) * a_prior(i))
+            if (abs(Na(i) - 1.0_r8) <= 1e-16_r8) then
+                write(errstring, *) "Posterior null category for ensemble member ", i, " is 1.0 (to roundoff)"
+                call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                write(23, *) 1e16_r8
+                ens_post(i, :) = 0.0_r8
+            else if (sum(xhat_post(i, :)) < 1e-16_r8) then
+                write(errstring, *) "Posterior xhat values for ensemble member ", i, " sum to zero (to roundoff)"
+                call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                write(23, *) 0.0_r8
+                ens_post(i, :) = 0.0_r8
+            else
+                a_post(i) = sum(xhat_post(i, :) / (1.0_r8 - Na(i)))
+                if (a_post(i) < 0.0_r8) then
+                    write(errstring, *) "Posterior alpha for ensemble member ", i, " is negative."
+                    call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                    write(errstring, *) "Posterior N value: ", Na(i), " Posterior xhat values: ", sum(xhat_post(i, :))
+                    call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                end if
+                write(23, *) a_post(i)
+                ens_post(i, :) = xhat_post(i, :) / a_post(i)
+            end if
         end do
         close(23)
-
 
         ! Verify that the updated state variables are within bounds
         do i = 1, ens_size
@@ -244,7 +222,7 @@ module fractional_reg_mod
             end do
             ! Check B: verify that the sum of all state variables is also within bounds
             if (state_bounded_below) then
-                if (sum(ens_post(i, :)) - state_lower_bound < -1e-8) then
+                if (sum(ens_post(i, :)) - state_lower_bound < -1e-8_r8) then
                     write(errstring, *) 'Aggregate of state variable in ensemble member ', i, 'violates lower bound. Aggreate at error: ', sum(ens_post(i,:))
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
@@ -252,14 +230,12 @@ module fractional_reg_mod
             if (state_bounded_above) then
                 ! NOTE that this is not totally correct, as the upper bound on the aggregate may be different from the sum of the upper bounds on each category
                 !        in some applications. For now (in sea ice, where ub_agg == ub_cat for SIC), this is acceptable.
-                if (sum(ens_post(i, :)) - state_upper_bound > 1e-8) then
+                if (sum(ens_post(i, :)) - state_upper_bound > 1e-8_r8) then
                     write(errstring, *) 'Aggregate of state variables in ensemble member ', i, 'violates upper bound. Aggregate at error: ', sum(ens_post(i,:))
                     call error_handler(E_ERR, 'state_regress_relativefrac', trim(errstring))
                 end if
             end if
         end do
-
-        deallocate(xhat_prior, xhat_post)
 
     end subroutine state_regress_relativefrac
 
