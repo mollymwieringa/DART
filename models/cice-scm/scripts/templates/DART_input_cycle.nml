@@ -164,6 +164,7 @@
     state_upper_bound = 1.0
     regression_type = 'linear'
     ens_size = 29
+    inflate = 0.5
     nc = 5
 /
 
