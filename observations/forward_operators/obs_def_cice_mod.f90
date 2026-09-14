@@ -55,10 +55,10 @@
 !-----------------------------------------------------------------------------
 ! BEGIN DART PREPROCESS GET_EXPECTED_OBS_FROM_DEF
 !   case(SAT_SEAICE_RADAR_FREEBOARD)
-!      call get_expected_agreg_freeboard(state_handle, ens_size, location, &
+!      call get_expected_radar_freeboard(state_handle, ens_size, location, &
 !               obs_kind_ind, expected_obs, istatus)
 !   case(SAT_SEAICE_LASER_FREEBOARD)
-!      call get_expected_agreg_freeboard(state_handle, ens_size, location, &
+!      call get_expected_laser_freeboard(state_handle, ens_size, location, &
 !               obs_kind_ind, expected_obs, istatus)
 !   case(SAT_SEAICE_AGREG_THICKNESS)
 !      call get_expected_agreg_thickness(state_handle, ens_size, location, &
@@ -200,14 +200,13 @@ end subroutine initialize_module
 !> This forward operator defines aggregate radar freeboard, which is 
 !> measured as the height of the ice/snow interface off the sea surface.
 
-subroutine get_expected_agreg_freeboard(state_handle, ens_size, location,  &
-                                        obs_type, &
-                                        agreg_fb, istatus)
+subroutine get_expected_radar_freeboard(state_handle, ens_size, location,  &
+                                        obstype, agreg_fb, istatus)
 
 type(ensemble_type), intent(in)  :: state_handle
 integer,             intent(in)  :: ens_size
 type(location_type), intent(in)  :: location
-integer,             intent(in)  :: obs_type
+integer,             intent(in)  :: obstype
 real(r8),            intent(out) :: agreg_fb(ens_size)
 integer,             intent(out) :: istatus(ens_size)
 
@@ -233,14 +232,14 @@ real(r8), parameter :: ice_dens   =  917.0_r8, &
 
 if (.not.module_initialized) call initialize_module(state_handle, ens_size)
 
-if (obs_type == SAT_SEAICE_LASER_FREEBOARD) then
-   ratio = snow_dens/water_dens - 1.0_r8
-elseif (obs_type == SAT_SEAICE_RADAR_FREEBOARD) then
-   ratio = snow_dens/water_dens
-else
-   istatus(:) = 1
-   return
-endif
+! if (obs_type == SAT_SEAICE_LASER_FREEBOARD) then
+!    ratio = snow_dens/water_dens - 1.0_r8
+! elseif (obs_type == SAT_SEAICE_RADAR_FREEBOARD) then
+ratio = snow_dens/water_dens
+! else
+!    istatus(:) = 1
+!    return
+! endif
 
 loc_array = get_location(location)
 llat = loc_array(1)
@@ -287,13 +286,12 @@ end subroutine get_expected_radar_freeboard
 !> measured as the height of the ice AND snow surface above the sea surface.
 
 subroutine get_expected_laser_freeboard(state_handle, ens_size, location,  &
-                                       var_sic, var_siv, var_snv, &
-                                       agreg_fb, istatus)
+                                        obstype, agreg_fb, istatus)
 
 type(ensemble_type), intent(in)  :: state_handle
 integer,             intent(in)  :: ens_size
 type(location_type), intent(in)  :: location
-integer,             intent(in)  :: var_sic, var_siv, var_snv
+integer,             intent(in)  :: obstype
 real(r8),            intent(out) :: agreg_fb(ens_size)
 integer,             intent(out) :: istatus(ens_size)
 
