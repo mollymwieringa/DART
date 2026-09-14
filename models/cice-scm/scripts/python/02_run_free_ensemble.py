@@ -298,7 +298,7 @@ if os.path.exists(output_path) == False:
 files = sorted(glob.glob('/glade/derecho/scratch/'+user+'/ICEPACK_RUNS/'+case_name+'/mem*/history/*.nc'))
 DS = []
 for file in files:
-    ds = xr.open_dataset(file).isel({'ni':2}).drop(['ntrcr','ni','trcr','trcrn'])
+    ds = xr.open_dataset(file).isel({'ni':2}).drop_vars(['ntrcr','ni','trcr','trcrn'])
     DS.append(ds)
 
 ens_ds = xr.concat(DS, dim='member')
