@@ -382,38 +382,59 @@ module fractional_reg_mod
     
     end subroutine postprocess
 
-    
-    subroutine get_delta_representation(ens_prior_a, ens_prior_v)
-        ! Operates only on the state variables (ens_prior, ens_post). If this is aicen, just need
-        ! to split each category into point masses based on the prior midpoint thickness.
-        ! H_bnds list is [0, 0.6445072168194257, 1.3914334975763035, 2.470179381959888, 4.567287918850491, 9.3338418158681743]
-        ! Put the values of H_bnds list into a Fortran array for further calculation 
-        H_bnds = [0.0, 0.6445072168194257, 1.3914334975763035, 2.470179381959888, 4.567287918850491, 9.3338418158681743]
+
+    subroutine get_delta_representation(ens_prior_a, ens_prior_v, nc, ens_size)
+
+        ! Declare variables
+        integer,             intent(in)  :: nc, ens_size
+        integer                          :: n
+        real(kind=dbl_kind), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc)
+        real(kind=dbl_kind), intent(out) :: delta_representation(ens_size, nc*2)
+        real(kind=dbl_kind)              :: h_midpoints(ens_size, nc), deltaH(ens_size, nc),     &
+                                            H_l(ens_size, nc), H_u(ens_size, nc),                &
+                                            x_r(ens_size, nc), x_l(ens_size, nc),                &
+                                            mask_a_zero(ens_size, nc),
+        real(kind=dbl_kind)              :: H_bnds(nc)
+        real(kind=dbl_kind)              :: cc1, cc2, cc3, x1, rncat
 
 
-        ! calculate the ITD bin width as deltaH of the H_bnds array
-        deltaH = H_bnds(2:) - H_bnds(1:-1)
-
-        ! create a mask for a == 0 (to avoid division by zero when calculating h_mid)
+        ! Step 1: calculate the midpoint thickness from the prior
         mask_a_zero = (ens_prior_a > 0)
+        h_midpoints = ens_prior_v / ens_prior_a
+        h_midpoints(.not. mask_a_zero) = 0
 
-        ! calculate the midpoint thickness for each category, given a and v
-        h_mid = ens_prior_v / ens_prior_a
-        h_mid(.not. mask_a_zero) = 0
+        ! Step 2: calculate the ITD bounds
+        rncat = real(nc, kind=dbl_kind)
+        cc1 = 3.0_dbl_kind / rncat
+        cc2 = 15.0_dbl_kind * cc1
+        cc3 = 3.0_dbl_kind
+        H_bnds(1) = 0.0_dbl_kind
+        do n = 2, nc
+            x1 = real(n-1, kind=dbl_kind) / rncat
+            H_bnds(n) = H_bnds(n-1) + cc1 + cc2 * (1.0_dbl_kind + tanh(cc3*(x1-1.0_dbl_kind)))
+        enddo 
 
-        ! calculate the right and left components of the delta representation where 
-        ! mask_a_zero is not zero
-        x_r = ens_prior_a * (H_u - h_mid)/deltaH
-        x_l = ens_prior_a * (h_mid - H_l)/deltaH
+        ! Step 3: calculate the upper and lower thicknesses for every category in all ensemble members
+        H_l(:, :) = H_bnds
+        H_u(:, 1:nc-1) = H_bnds(2:nc)
+        H_u(:, nc) = 3 * h_midpoints(:, nc) - 2*H_bnds(nc)
+        deltaH = H_u - H_l
+
+        ! Step 4: calculate the delta representation components for each category and ensemble member
+        x_r = ens_prior_a * (H_u - h_midpoints)/deltaH
+        x_l = ens_prior_a * (h_midpoints - H_l)/deltaH
         x_r(.not. mask_a_zero) = 0
         x_l(.not. mask_a_zero) = 0
 
-        ! roll the right and left components into one array, alternating left and right 
-        delta_rep = reshape([ (x_l(i), x_r(i), i = 1, nc) ], [2*nc])
+        ! Step 5. interleave the left and right components into the delta representation array
+        do n = 1, nc
+            delta_representation(:, 2*n-1) = x_l(:, n)
+            delta_representation(:, 2*n)   = x_r(:, n)
+        end do
 
-        ! verify that the sum of the delta representation is the same as the sum of the original category fractions
-        ! if failing verification, print a warning
-        if (abs(sum(delta_rep) - sum(ens_prior_a)) > 1e-12) then
+        ! Step 6. verify that the sum of the delta representation is the same as the sum of the original category fractions
+        ! in each ensemble member
+        if (any(abs(sum(delta_representation, dim=2) - sum(ens_prior_a, dim=2)) > 1e-12)) then
             print *, "Warning: Delta representation verification failed."
         endif
 
