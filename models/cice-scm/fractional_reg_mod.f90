@@ -383,7 +383,7 @@ module fractional_reg_mod
     end subroutine postprocess
 
 
-    subroutine get_delta_representation(ens_prior_a, ens_prior_v, nc, ens_size)
+    subroutine get_delta_representation(ens_prior_a, ens_prior_v, nc, ens_size, delta_representation)
 
         ! Declare variables
         integer,             intent(in)  :: nc, ens_size
