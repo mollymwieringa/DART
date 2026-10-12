@@ -5,7 +5,8 @@ program state_regression
                                         check_namelist_read, find_namelist_in_file
     use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
     use fractional_reg_mod,      only : state_regress_disaggregation, state_regress_relativefrac,   &
-                                        state_regress_probit, postprocess
+                                        state_regress_probit, get_delta_representation_from state,  &
+                                        get_state_from_delta_representation, postprocess
 
     ! Declare variables
     integer               :: ens_size, nc, nc_exp
