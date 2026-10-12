@@ -12,7 +12,7 @@ program state_regression
     integer               :: iunit, io, i, j, istatus
     integer               :: dist_for_obs, dist_for_state
     logical               :: state_bounded_below, state_bounded_above, fexists
-    logical               :: obs_bounded_below, obs_bounded_above
+    logical               :: obs_bounded_below, obs_bounded_above, delta_representation
     character(len=128)    :: obs_dist, regression_type
     real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
@@ -25,7 +25,8 @@ program state_regression
                                       obs_lower_bound, obs_upper_bound, &
                                       state_bounded_below, state_bounded_above, &
                                       state_lower_bound, state_upper_bound, &
-                                      regression_type, ens_size, inflate, nc
+                                      regression_type, delta_representation, &
+                                      ens_size, inflate, nc
     
     call initialize_utilities()
 
