@@ -383,7 +383,7 @@ module fractional_reg_mod
     end subroutine postprocess
 
 
-    subroutine get_delta_representation(ens_prior_a, ens_prior_v, nc, ens_size, delta_representation)
+    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, nc, ens_size, delta_representation)
 
         ! Declare variables
         integer,             intent(in)  :: nc, ens_size
@@ -438,6 +438,25 @@ module fractional_reg_mod
             print *, "Warning: Delta representation verification failed."
         endif
 
-    end subroutine get_delta_representation 
+    end subroutine get_delta_representation_from_state
+    
+    subroutine get_state_from_delta_representation(ens_post_a, ens_post_v, H_l, H_u, delta_representation, nc, ens_size)
+
+        ! Declare variables
+        integer,             intent(in)  :: nc, ens_size
+        integer                          :: n
+        real(kind=dbl_kind), intent(in)  :: delta_representation(ens_size, nc*2), &
+                                            H_l(ens_size, nc), H_u(ens_size, nc)
+        real(kind=dbl_kind), intent(out) :: ens_post_a(ens_size, nc), ens_post_v(ens_size, nc)
+
+        ! Step 1: extract the left and right components from the delta representation array
+        ! Note that the v posterior calculation assumes that the upper bound on the thickest category stays the same
+        ! as in the prior. 
+        do n = 1, nc
+            ens_post_a(:, n) = delta_representation(:, 2*n-1) + delta_representation(:, 2*n)
+            ens_post_v(:, n) = delta_representation(:, 2*n-1) * H_l(:, n) + delta_representation(:, 2*n) * H_u(:, n)
+        end do
+
+    end subroutine get_state_from_delta_representation
 
 end module fractional_reg_mod
