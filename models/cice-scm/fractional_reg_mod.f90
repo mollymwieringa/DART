@@ -12,6 +12,8 @@ module fractional_reg_mod
     public :: state_regress_disaggregation, &
               state_regress_relativefrac, &
               state_regress_probit, &
+              get_delta_representation_from_state, &
+              get_state_from_delta_representation, &
               postprocess
 
     contains
@@ -382,16 +384,16 @@ module fractional_reg_mod
     
     end subroutine postprocess
 
-
-    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, nc, ens_size, delta_representation)
+    ! Subroutine to get delta representation (Boden & Grooms, 2025) from state
+    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, delta_representation, nc, ens_size)
 
         ! Declare variables
         integer,             intent(in)  :: nc, ens_size
         integer                          :: n
         real(kind=dbl_kind), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc)
-        real(kind=dbl_kind), intent(out) :: delta_representation(ens_size, nc*2)
+        real(kind=dbl_kind), intent(out) :: delta_representation(ens_size, nc*2),                &
+                                            H_l(ens_size, nc), H_u(ens_size, nc)
         real(kind=dbl_kind)              :: h_midpoints(ens_size, nc), deltaH(ens_size, nc),     &
-                                            H_l(ens_size, nc), H_u(ens_size, nc),                &
                                             x_r(ens_size, nc), x_l(ens_size, nc),                &
                                             mask_a_zero(ens_size, nc),
         real(kind=dbl_kind)              :: H_bnds(nc)
@@ -440,7 +442,7 @@ module fractional_reg_mod
 
     end subroutine get_delta_representation_from_state
     
-    
+    ! Subroutine to get state back from delta representation
     subroutine get_state_from_delta_representation(ens_post_a, ens_post_v, H_l, H_u, delta_representation, nc, ens_size)
 
         ! Declare variables
