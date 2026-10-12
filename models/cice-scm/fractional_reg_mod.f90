@@ -382,4 +382,41 @@ module fractional_reg_mod
     
     end subroutine postprocess
 
+    
+    subroutine get_delta_representation(ens_prior_a, ens_prior_v)
+        ! Operates only on the state variables (ens_prior, ens_post). If this is aicen, just need
+        ! to split each category into point masses based on the prior midpoint thickness.
+        ! H_bnds list is [0, 0.6445072168194257, 1.3914334975763035, 2.470179381959888, 4.567287918850491, 9.3338418158681743]
+        ! Put the values of H_bnds list into a Fortran array for further calculation 
+        H_bnds = [0.0, 0.6445072168194257, 1.3914334975763035, 2.470179381959888, 4.567287918850491, 9.3338418158681743]
+
+
+        ! calculate the ITD bin width as deltaH of the H_bnds array
+        deltaH = H_bnds(2:) - H_bnds(1:-1)
+
+        ! create a mask for a == 0 (to avoid division by zero when calculating h_mid)
+        mask_a_zero = (ens_prior_a > 0)
+
+        ! calculate the midpoint thickness for each category, given a and v
+        h_mid = ens_prior_v / ens_prior_a
+        h_mid(.not. mask_a_zero) = 0
+
+        ! calculate the right and left components of the delta representation where 
+        ! mask_a_zero is not zero
+        x_r = ens_prior_a * (H_u - h_mid)/deltaH
+        x_l = ens_prior_a * (h_mid - H_l)/deltaH
+        x_r(.not. mask_a_zero) = 0
+        x_l(.not. mask_a_zero) = 0
+
+        ! roll the right and left components into one array, alternating left and right 
+        delta_rep = reshape([ (x_l(i), x_r(i), i = 1, nc) ], [2*nc])
+
+        ! verify that the sum of the delta representation is the same as the sum of the original category fractions
+        ! if failing verification, print a warning
+        if (abs(sum(delta_rep) - sum(ens_prior_a)) > 1e-12) then
+            print *, "Warning: Delta representation verification failed."
+        endif
+
+    end subroutine get_delta_representation 
+
 end module fractional_reg_mod
