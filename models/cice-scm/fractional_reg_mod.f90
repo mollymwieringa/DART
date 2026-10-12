@@ -449,6 +449,61 @@ module fractional_reg_mod
 
     end subroutine get_state_from_delta_representation
 
+    ! Subroutine to rebalance volume for consistency with area
+    subroutine rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+
+        ! Declare variables 
+        integer,             intent(in)  :: nc, ens_size
+        real(kind=dbl_kind), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc), &
+                                            ens_post_a(ens_size, nc)
+        real(kind=dbl_kind), intent(out) :: ens_post_v(ens_size, nc)
+        real(kind=dbl_kind)              :: mask_a_zero(ens_size, nc), prior_midpoints(ens_size, nc), &
+                                            H_l(ens_size, nc), H_u(ens_size, nc), uniform_midpoints(ens_size, nc), &
+                                            prior_a(nc), prior_v(nc), post_a(nc), post_v(nc)
+        character(len=100)               :: errstring
+        integer                          :: e, n
+        
+        ! Step 1. Get prior midpoints
+        mask_a_zero = (ens_prior_a > 0)
+        prior_midpoints = ens_prior_v / ens_prior_a
+        prior_midpoints(.not. mask_a_zero) = 0
+
+        ! Step 2: calculate the ITD bounds and standard midpoints
+        call get_ITD_bounds(prior_midpoints, H_l, H_u, nc, ens_size)
+        uniform_midpoints = (H_l + H_u) / 2
+
+        ! Step 3: 
+        do e = 1, ens_size
+            prior_a = ens_prior_a(e, :)
+            prior_v = ens_prior_v(e, :)
+            post_a = ens_post_a(e, :)
+            do n = 1, nc
+                ! 1. if ice area is present in both old and new  
+                if (post_a(n) > 0) and (prior_a(n) > 0) then
+                    if (post_a(n) <= 1e-6) then
+                        post_v(n) = post_a(n) * uniform_midpoints(e, n)
+                    else if
+                        post_v(n) = post_a(n) * prior_midpoints(e, n)
+                    end if
+                ! 2. there was no ice, but DA added ice area 
+                else if (post_a(n) > 0) and (prior_a(n) <= 0) then
+                    post_v(n) = post_a(n) * uniform_midpoints(e, n)   
+                ! 3. there was ice area, but DA removed it  
+                else if (post_a(n) <= 0) and (prior_a(n) > 0) then
+                    post_v(n) = post_a(n) * 0.0
+                ! 4. there was no ice and there is still no ice
+                else if (post_a(n) <= 0) and (prior_a(n) <= 0) then
+                    post_v(n) = post_a(n) * 0.0
+                else
+                    write(errstring, *) "Error in volume rebalancing. Something went wrong with the logic."
+                    call error_handler(E_MSG, 'rebalance_volume', trim(errstring))
+                end if
+            end do
+            ens_post_v(e, :) = post_v
+        end do
+        
+    end subroutine rebalance_volume
+
     ! Subroutine to get the category bounds based on nc
     subroutine get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size)
 
