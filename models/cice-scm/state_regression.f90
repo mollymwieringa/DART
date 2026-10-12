@@ -6,7 +6,7 @@ program state_regression
     use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
     use fractional_reg_mod,      only : state_regress_disaggregation, state_regress_relativefrac,   &
                                         state_regress_probit, get_delta_representation_from state,  &
-                                        get_state_from_delta_representation, postprocess
+                                        get_state_from_delta_representation, rebalance_volume, postprocess
 
     ! Declare variables
     integer               :: ens_size, nc, nc_exp
@@ -134,6 +134,7 @@ program state_regression
         call state_regress_disaggregation(obs_prior, obs_post, ens_prior_a, ens_post_a, ens_size, nc, &
                                           obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                           state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
         call cpu_time(end_time)
         print *, 'Time for regression by disaggregation: ', end_time - start_time
 
@@ -160,6 +161,8 @@ program state_regression
                                             dist_for_obs, dist_for_state, &
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                             state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+            call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+        end if 
         call cpu_time(end_time)
         print *, 'Time for regression by relative fractional amount: ', end_time - start_time
 
@@ -202,6 +205,7 @@ program state_regression
                          state_upper_bound, state_lower_bound, &
                          obs_bounded_above, obs_bounded_below, &
                          obs_upper_bound, obs_lower_bound)
+        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
         call cpu_time(end_time)
         print *, 'Time for probit postprocessing: ', end_time - start_time
 
@@ -236,6 +240,7 @@ program state_regression
                          state_upper_bound, state_lower_bound, &
                          obs_bounded_above, obs_bounded_below, &
                          obs_upper_bound, obs_lower_bound)
+        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
         call cpu_time(end_time)
         print *, 'Time for linear regression postprocessing: ', end_time - start_time
 
@@ -268,11 +273,6 @@ program state_regression
     !--------------------------------------------------------------------------------------------------
     ! Write the final posterior ensemble and inflation factors to file
     !--------------------------------------------------------------------------------------------------
-    if (.not. delta_representation) then
-        ens_post_v = ens_prior_v
-    end if
-        
-    
     open(unit=23, file=trim('ens_post_')//trim(regression_type)//trim('_')//trim(obs_dist)//trim('_area.txt'), status='UNKNOWN', RECL=256)
     do i = 1, ens_size
         write(23, *) ens_post_a(i, :)
