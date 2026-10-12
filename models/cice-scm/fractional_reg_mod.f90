@@ -440,6 +440,7 @@ module fractional_reg_mod
 
     end subroutine get_delta_representation_from_state
     
+    
     subroutine get_state_from_delta_representation(ens_post_a, ens_post_v, H_l, H_u, delta_representation, nc, ens_size)
 
         ! Declare variables
