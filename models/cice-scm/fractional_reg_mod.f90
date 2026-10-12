@@ -406,20 +406,7 @@ module fractional_reg_mod
         h_midpoints(.not. mask_a_zero) = 0
 
         ! Step 2: calculate the ITD bounds
-        rncat = real(nc, kind=dbl_kind)
-        cc1 = 3.0_dbl_kind / rncat
-        cc2 = 15.0_dbl_kind * cc1
-        cc3 = 3.0_dbl_kind
-        H_bnds(1) = 0.0_dbl_kind
-        do n = 2, nc
-            x1 = real(n-1, kind=dbl_kind) / rncat
-            H_bnds(n) = H_bnds(n-1) + cc1 + cc2 * (1.0_dbl_kind + tanh(cc3*(x1-1.0_dbl_kind)))
-        enddo 
-
-        ! Step 3: calculate the upper and lower thicknesses for every category in all ensemble members
-        H_l(:, :) = H_bnds
-        H_u(:, 1:nc-1) = H_bnds(2:nc)
-        H_u(:, nc) = 3 * h_midpoints(:, nc) - 2*H_bnds(nc)
+        get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size)
         deltaH = H_u - H_l
 
         ! Step 4: calculate the delta representation components for each category and ensemble member
@@ -461,5 +448,33 @@ module fractional_reg_mod
         end do
 
     end subroutine get_state_from_delta_representation
+
+    ! Subroutine to get the category bounds based on nc
+    subroutine get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size)
+
+        ! Declare variables
+        integer,             intent(in)  :: n, nc, ens_size
+        real(kind=dbl_kind), intent(in)  :: h_midpoints(ens_size, nc)
+        real(kind=dbl_kind), intent(out) :: H_l(ens_size, nc), H_u(ens_size, nc)
+        real(kind=dbl_kind)              :: H_bnds(nc)
+        real(kind=dbl_kind)              :: cc1, cc2, cc3, x1, rncat
+        
+        ! Calculate category bounds
+        rncat = real(nc, kind=dbl_kind)
+        cc1 = 3.0_dbl_kind / rncat
+        cc2 = 15.0_dbl_kind * cc1
+        cc3 = 3.0_dbl_kind
+        H_bnds(1) = 0.0_dbl_kind
+        do n = 2, nc
+            x1 = real(n-1, kind=dbl_kind) / rncat
+            H_bnds(n) = H_bnds(n-1) + cc1 + cc2 * (1.0_dbl_kind + tanh(cc3*(x1-1.0_dbl_kind)))
+        end do 
+
+        ! Calculate the ensemble array of upper and lower bounds
+        H_l(:, :) = H_bnds
+        H_u(:, 1:nc-1) = H_bnds(2:nc)
+        H_u(:, nc) = 3 * h_midpoints(:, nc) - 2*H_bnds(nc)
+
+    end subroutine get_ITD_bounds
 
 end module fractional_reg_mod
