@@ -14,7 +14,7 @@ module fractional_reg_mod
               state_regress_probit, &
               get_delta_representation_from_state, &
               get_state_from_delta_representation, &
-              postprocess
+              rebalance_volume, postprocess
 
     contains
 
