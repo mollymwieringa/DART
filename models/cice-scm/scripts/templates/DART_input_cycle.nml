@@ -163,6 +163,7 @@
     state_lower_bound = 0.0
     state_upper_bound = 1.0
     regression_type = 'linear'
+    regression_check = .false.
     delta_representation = .false.
     ens_size = 29
     inflate = 0.5
