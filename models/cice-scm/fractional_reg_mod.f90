@@ -111,7 +111,8 @@ module fractional_reg_mod
     subroutine state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
                                           dist_for_obs, dist_for_state, &
                                           obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
+                                          regression_check)
 
         ! This routine assumes that the state variables are fractional amounts whose sum is constrained to be 
         ! to be less than or equal to 1.0. It assumes observations used to update the system are of the 
@@ -122,7 +123,7 @@ module fractional_reg_mod
         integer,   intent(in) :: ens_size, nc
         integer,   intent(in) :: dist_for_obs, dist_for_state
         logical,   intent(in) :: state_bounded_above, state_bounded_below
-        logical,   intent(in) :: obs_bounded_above, obs_bounded_below
+        logical,   intent(in) :: obs_bounded_above, obs_bounded_below, regression_check
         real(r8),  intent(in) :: obs_prior(ens_size), obs_post(ens_size)
         real(r8),  intent(in) :: ens_prior(ens_size, nc)
         real(r8), intent(out) :: ens_post(ens_size, nc)
@@ -154,27 +155,31 @@ module fractional_reg_mod
             xhat_post(:,j) = xhat_post_j
         end do
 
-        ! ! Check that the regression reflects the observation increment across categories
-        ! do i = 1, ens_size
-        !     ! if the summed change to categories differs from the obs inc by more than 0.1
-        !     mass_check = obs_inc(i) - sum(xhat_post(i, :) - xhat_prior(i, :))
-        !     if (abs(mass_check) > 0.1_r8) then
-        !         write(errstring, *) "Summed change to categories for ensemble member ", i, " differs from obs inc by more than 0.1."
-        !         call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
-        !         if (mass_check > 0.0_r8) then
-        !             write(errstring, *) "regression did not add enough mass to the system. Mass check value: ", mass_check
-        !             call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
-        !             xhat_post(i, 1) = xhat_post(i, 1) + mass_check * Np(i) / (Np(i) + sum(xhat_prior(i, 2:)))
-        !         else if (mass_check < 0.0_r8) then
-        !             write(errstring, *) "regression added too much mass to the system. Mass check value: ", mass_check
-        !             call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
-        !             xhat_post(i, 1) = xhat_post(i, 1) + mass_check * xhat_post(i, 1) / sum(xhat_post(i, :))
-        !         else
-        !             write(errstring, *) "regression added the correct amount of mass to the system. Mass check value: ", mass_check
-        !             call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
-        !         end if
-        !     end if
-        ! end do
+        if (regression_check) then
+            write(errstring, *) "Regression check is on. Checking that the regression reflects the observation increment across categories."
+            do i = 1, ens_size
+                ! if the summed change to categories differs from the obs inc by more than 0.1
+                mass_check = obs_inc(i) - sum(xhat_post(i, :) - xhat_prior(i, :))
+                if (abs(mass_check) > 0.1_r8) then
+                    write(errstring, *) "Summed change to categories for ensemble member ", i, " differs from obs inc by more than 0.1."
+                    call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                    if (mass_check > 0.0_r8) then
+                        write(errstring, *) "regression did not add enough mass to the system. Mass check value: ", mass_check
+                        call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                        xhat_post(i, 1) = xhat_post(i, 1) + mass_check * Np(i) / (Np(i) + sum(xhat_prior(i, 2:)))
+                    else if (mass_check < 0.0_r8) then
+                        write(errstring, *) "regression added too much mass to the system. Mass check value: ", mass_check
+                        call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                        xhat_post(i, 1) = xhat_post(i, 1) + mass_check * xhat_post(i, 1) / sum(xhat_post(i, :))
+                    else
+                        write(errstring, *) "regression added the correct amount of mass to the system. Mass check value: ", mass_check
+                        call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
+                    end if
+                end if
+            end do
+        else
+            write(*,*) "Regression check is off. Not checking that the regression reflects the observation increment across categories."
+        end if
 
         ! Calculate a_post and use it to translate back from xhat_post to ens_post
         open(unit=23, file=trim('alpha_posterior.txt'), status='UNKNOWN', RECL=256)
