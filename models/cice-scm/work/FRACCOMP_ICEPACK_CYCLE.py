@@ -26,7 +26,7 @@ end_assim_date = datetime(int(sys.argv[8]),int(sys.argv[9]),int(sys.argv[10]))
 ens_size = 30
 
 case = loc+'_'+obs_type+'_'+regression_type+'_'+truth_member
-spinup_case = 'SPINUP_'+loc
+spinup_case = 'SPINUP_kcb1_'+loc
 ###############################################################
 # DEFINE HELPER FUNCTIONS                                     #
 ###############################################################
@@ -60,6 +60,7 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
     dart_nml['state_regression_nml']['obs_bounded_above'] = True
     dart_nml['state_regression_nml']['obs_upper_bound'] = 1.0
     dart_nml['state_regression_nml']['regression_type'] = regression_type
+    dart_nml['state_regression_nml']['delta_representation'] = True
     dart_nml.write('input.nml', force=True)
 
 
@@ -68,7 +69,9 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
     os.system(comd)
     comd = 'cp '+storage_path+'/observations/'+loc+'/member_'+truth_member+'/'+obs_type+'/true_cats_info_'+date_str+'.txt true_cats_info.txt'
     os.system(comd)
-    comd = 'cp '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+date_str+'.txt prior_ensemble.txt'
+    comd = 'cp '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+date_str+'_area.txt prior_ensemble_area.txt'
+    os.system(comd)
+    comd = 'cp '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+date_str+'_vol.txt prior_ensemble_vol.txt'
     os.system(comd)
     comd = 'cp '+storage_path+'/'+case+'/ensemble/obs_prior_ensemble_'+date_str+'.txt obs_prior_ensemble.txt'
     os.system(comd)
@@ -86,14 +89,15 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
         os.system(comd)
 
         # update the restart file for icepack and tidy up
-        if (os.path.isfile('ens_post_'+regression_type+'_bnrh.txt') is False):
+        if (os.path.isfile('ens_post_'+regression_type+'_bnrh_area.txt') is False):
             print('State regression did not finish correctly. Exiting...')
             output = 0
             sys.exit()
         else:
             # write all the ensemble members output to restart files 
-            ens_post = np.loadtxt('ens_post_'+regression_type+'_bnrh.txt')
-            assert np.shape(ens_post) == (ens_size-1,5), 'error loading ens. posterior data! expecting dimensions of '+str((ens_size-1,5))+'! got dimensions of '+str(np.shape(ens_post))+'.'
+            ens_post_area = np.loadtxt('ens_post_'+regression_type+'_bnrh_area.txt')
+            ens_post_vol = np.loadtxt('ens_post_'+regression_type+'_bnrh_vol.txt')
+            assert np.shape(ens_post_area) == (ens_size-1,5), 'error loading ens. posterior data! expecting dimensions of '+str((ens_size-1,5))+'! got dimensions of '+str(np.shape(ens_post_area))+'.'
             mem_counter = 0
             for mem in range(ens_size):
                 if mem+1 == int(truth_member):
@@ -108,44 +112,11 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
                     os.system(comd)
 
                     # replace the sea ice categories in the restart file
-                    aicen_new = np.array(ens_post[mem_counter,:])
-                    vicen_new = np.zeros_like(aicen_new)
-
-                    # address the three cases for adjusting vicen based on the new aicen
-                    restart_ds = xr.load_dataset(restart_file)
-                    aicen_old = restart_ds.aicen[:,2].values
-                    vicen_old = restart_ds.vicen[:,2].values
-                    hicen_old = vicen_old / aicen_old
-                    hicen_old = np.nan_to_num(hicen_old, nan=0.0, posinf=0.0, neginf=0.0)
-                    hicen_midpoints = [np.float64(0.3222536084097129), 
-                                       np.float64(1.0179703571978647), 
-                                       np.float64(1.9308064397680962), 
-                                       np.float64(3.51873365040519), 
-                                       np.float64(6.950564867359333)]
-
-                    for i in range(len(aicen_new)):
-                        # 1. if ice area is present in both old and new  
-                        if (aicen_new[i] > 0) and (aicen_old[i] > 0):
-                            if (aicen_new[i] <= 1e-6):
-                                vicen_new[i] = aicen_new[i] * hicen_midpoints[i]
-                            else:
-                                vicen_new[i] = aicen_new[i] * hicen_old[i]
-                        # 2. there was no ice, but DA added ice area 
-                        elif (aicen_new[i] > 0) and (aicen_old[i] <= 0):
-                            vicen_new[i] = aicen_new[i] * hicen_midpoints[i]    
-                        # 3. there was ice area, but DA removed it  
-                        elif (aicen_new[i] <= 0) and (aicen_old[i] > 0):
-                            vicen_new[i] = aicen_new[i] * 0.0
-                        # 4. there was no ice and there is still no ice
-                        elif (aicen_new[i] <= 0) and (aicen_old[i] <= 0):
-                            vicen_new[i] = aicen_new[i] * 0.0
-                        else:
-                            print(aicen_new[i], aicen_old[i])
-                            print('crash at ncat: '+str(i))
-                            print('You should not be here! Some logic was not accounted for in the DA update of the restart file. Please check the code and fix! Exiting...')
-                            sys.exit()
+                    aicen_new = np.array(ens_post_area[mem_counter,:])
+                    vicen_new = np.array(ens_post_vol[mem_counter,:])
 
                     # replace values in the restart file and save
+                    restart_ds = xr.load_dataset(restart_file)
                     restart_ds['aicen'][:,2] = aicen_new
                     restart_ds['vicen'][:,2] = vicen_new
                     restart_ds.to_netcdf(restart_file)
@@ -162,9 +133,13 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
             os.system(comd)
             comd= f'mv true_cats_info.txt '+day_path+'/true_cats_info.txt'
             os.system(comd)
-            comd=f'mv prior_ensemble.txt '+day_path+'/prior_ensemble.txt'
+            comd=f'mv prior_ensemble_area.txt '+day_path+'/prior_ensemble_area.txt'
             os.system(comd)
-            comd=f'mv ens_post_'+regression_type+'_bnrh.txt '+day_path+'/ens_post_'+regression_type+'.txt'
+            comd=f'mv prior_ensemble_vol.txt '+day_path+'/prior_ensemble_vol.txt'
+            os.system(comd)
+            comd=f'mv ens_post_'+regression_type+'_bnrh_area.txt '+day_path+'/ens_post_'+regression_type+'_area.txt'
+            os.system(comd)
+            comd=f'mv ens_post_'+regression_type+'_bnrh_vol.txt '+day_path+'/ens_post_'+regression_type+'_vol.txt'
             os.system(comd)
             comd=f'mv state_regression_output '+day_path+'/state_regression_output'
             os.system(comd)
@@ -219,7 +194,7 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
         mem += 1
 
     # write model forecast to next obs_prior_ensemble_DATE.txt and prior_ensemble_DATE.txt for this member to the storage directory
-    with open('new_prior_ensemble.txt', 'a') as f_state:
+    with open('new_prior_ensemble_area.txt', 'a') as f_state:
         mem = 1
         while mem <= ens_size:
             if mem == int(truth_member):
@@ -229,6 +204,23 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
                 restart_file = icepack_path + '/mem'+inst_string+'/restart/iced.'+next_day_str+'-00000.nc'
                 restart_ds = xr.load_dataset(restart_file).isel({'ni':2})
                 prior_values = restart_ds.aicen.values
+                for i, val in enumerate(prior_values):
+                    if i < 4:
+                        f_state.write(str(val)+'   ')
+                    else:
+                        f_state.write(str(val)+'\n')
+            mem += 1
+
+    with open('new_prior_ensemble_vol.txt', 'a') as f_state:
+        mem = 1
+        while mem <= ens_size:
+            if mem == int(truth_member):
+                print('Skipping truth member!')
+            else:
+                inst_string = '{0}'.format('%04d'%mem) 
+                restart_file = icepack_path + '/mem'+inst_string+'/restart/iced.'+next_day_str+'-00000.nc'
+                restart_ds = xr.load_dataset(restart_file).isel({'ni':2})
+                prior_values = restart_ds.vicen.values
                 for i, val in enumerate(prior_values):
                     if i < 4:
                         f_state.write(str(val)+'   ')
@@ -262,7 +254,9 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
         # os.system(comd)
 
     # move the new ensemble text files
-    comd = 'mv new_prior_ensemble.txt '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+next_day_str+'.txt'
+    comd = 'mv new_prior_ensemble_area.txt '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+next_day_str+'_area.txt'
+    os.system(comd)
+    comd = 'mv new_prior_ensemble_vol.txt '+storage_path+'/'+case+'/ensemble/prior_ensemble_'+next_day_str+'_vol.txt'
     os.system(comd)
     comd = 'mv new_obs_prior_ensemble.txt '+storage_path+'/'+case+'/ensemble/obs_prior_ensemble_'+next_day_str+'.txt'
     os.system(comd)
@@ -358,6 +352,7 @@ def setup(case, spinup_case, obs_type, ens_size):
         namelist['setup_nml']['input_lat'] = lat
         namelist['setup_nml']['input_lon'] = lon
         namelist['setup_nml']['runtype_startup'] = True
+        namelist['setup_nml']['kcatbound'] = 1
         namelist['forcing_nml']['data_dir'] = '/glade/work/mollyw/Projects/cice-scm-da/data/forcings/'+case.split('_')[0]+'/free/'
         namelist['forcing_nml']['atm_data_file'] = 'ATM_FORCING_'+inst_string+'.txt'
         namelist['forcing_nml']['ocn_data_file'] = 'OCN_FORCING_'+inst_string+'.txt'
@@ -370,7 +365,7 @@ def setup(case, spinup_case, obs_type, ens_size):
     
     # write model forecast to next obs_prior_ensemble_DATE.txt and prior_ensemble_DATE.txt for this member to the storage directory
     os.chdir(storage_dir)
-    with open('first_prior_ensemble.txt', 'a') as f_state:
+    with open('first_prior_ensemble_area.txt', 'a') as f_state:
         mem = 1
         while mem <= ens_size:
             if mem == int(truth_member):
@@ -380,6 +375,24 @@ def setup(case, spinup_case, obs_type, ens_size):
                 new_restart_file = '/glade/derecho/scratch/mollyw/ICEPACK_RUNS/'+case+'/mem'+inst_string+'/restart/iced.2011-01-02-00000.nc'
                 restart_ds = xr.load_dataset(new_restart_file).isel({'ni':2})
                 prior_values = restart_ds.aicen.values
+                for i, val in enumerate(prior_values):
+                    if i < 4:
+                        f_state.write(str(val)+'   ')
+                    else:
+                        f_state.write(str(val)+'\n')
+                restart_ds.close()
+            mem += 1
+
+    with open('first_prior_ensemble_vol.txt', 'a') as f_state:
+        mem = 1
+        while mem <= ens_size:
+            if mem == int(truth_member):
+                print('Skipping truth member!')
+            else:
+                inst_string ='{0}'.format('%04d' % mem) 
+                new_restart_file = '/glade/derecho/scratch/mollyw/ICEPACK_RUNS/'+case+'/mem'+inst_string+'/restart/iced.2011-01-02-00000.nc'
+                restart_ds = xr.load_dataset(new_restart_file).isel({'ni':2})
+                prior_values = restart_ds.vicen.values
                 for i, val in enumerate(prior_values):
                     if i < 4:
                         f_state.write(str(val)+'   ')
@@ -408,7 +421,9 @@ def setup(case, spinup_case, obs_type, ens_size):
             mem += 1
 
     # move the new ensemble text files
-    comd = 'mv '+storage_dir+'/first_prior_ensemble.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/prior_ensemble_2011-01-02.txt'
+    comd = 'mv '+storage_dir+'/first_prior_ensemble_area.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/prior_ensemble_2011-01-02_area.txt'
+    os.system(comd)
+    comd = 'mv '+storage_dir+'/first_prior_ensemble_vol.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/prior_ensemble_2011-01-02_vol.txt'
     os.system(comd)
     comd = 'mv '+storage_dir+'/first_obs_prior_ensemble.txt /glade/work/mollyw/Projects/fractional-comp/data/experiment_output/online/'+case+'/ensemble/obs_prior_ensemble_2011-01-02.txt'
     os.system(comd)
