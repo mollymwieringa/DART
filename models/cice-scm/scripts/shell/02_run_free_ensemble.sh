@@ -2,7 +2,7 @@
 ### Job Name
 #PBS -N run_free_ensemble
 ### Charging account
-#PBS -A P93300065
+#PBS -A P54048000
 ### Request one chunk of resources with 1 CPU and 10 GB of memory
 #PBS -l select=1:ncpus=1:mem=8GB
 ### Set job walltime
@@ -14,7 +14,7 @@
 #PBS -j oe
 ### send emails on abort and exit
 #PBS -m ae
-#PBS -M mmw906@uw.edu
+#PBS -M mollyw@ucar.edu
 
 export TMPDIR=/glade/derecho/scratch/$USER/temp
 mkdir -p $TMPDIR
@@ -24,5 +24,5 @@ mkdir -p $TMPDIR
 conda activate cice-scm-da
 
 ### Run analysis script
-python ../python/02_run_free_ensemble.py free_CoastalCanada mollyw spinup_CoastalCanada uniform_ice atm
+python ../python/02_run_free_ensemble.py FREE_SibChuk mollyw SPINUP_SibChuk
 
