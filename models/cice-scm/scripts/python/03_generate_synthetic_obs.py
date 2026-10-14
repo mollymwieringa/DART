@@ -346,7 +346,7 @@ for t in range(0, datelist.shape[0]):
     diff = datelist[t] - datetime(1601,1,1,0)
     nml_file = f90nml.read(dart_dir + '/models/cice-scm/scripts/templates/DART_input.nml.template')
     # nml_file = f90nml.read(project_dir + '/data/templates/DART_input.nml.template')
-    nml_file['algorithm_info_nml']['qceff_table_filename'] = '/glade/u/home/mollyw/work/dart_manhattan/models/cice-scm/scripts/templates/cice_bounded_qceff_table.csv'
+    nml_file['algorithm_info_nml']['qceff_table_filename'] = '/glade/u/home/mollyw/work/dart_manhattan/models/cice-scm/scripts/templates/icepack_bounded_qceff_table.csv'
     nml_file['perfect_model_obs_nml']['init_time_days'] = diff.days
     nml_file['perfect_model_obs_nml']['init_time_seconds'] = diff.seconds
     nml_file['perfect_model_obs_nml']['input_state_files'] = 'cice.r.nc'
