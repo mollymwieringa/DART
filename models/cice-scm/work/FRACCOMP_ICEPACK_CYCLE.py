@@ -61,6 +61,7 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
     dart_nml['state_regression_nml']['obs_upper_bound'] = 1.0
     dart_nml['state_regression_nml']['regression_type'] = regression_type
     dart_nml['state_regression_nml']['delta_representation'] = True
+    dart_nml['state_regression_nml']['regression_check'] = False
     dart_nml.write('input.nml', force=True)
 
 
