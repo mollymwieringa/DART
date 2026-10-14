@@ -13,7 +13,8 @@ program state_regression
     integer               :: iunit, io, i, j, istatus
     integer               :: dist_for_obs, dist_for_state
     logical               :: state_bounded_below, state_bounded_above, fexists
-    logical               :: obs_bounded_below, obs_bounded_above, delta_representation
+    logical               :: obs_bounded_below, obs_bounded_above
+    logical               :: delta_representation, regression_check
     character(len=128)    :: obs_dist, regression_type
     real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
@@ -28,8 +29,8 @@ program state_regression
                                       obs_lower_bound, obs_upper_bound, &
                                       state_bounded_below, state_bounded_above, &
                                       state_lower_bound, state_upper_bound, &
-                                      regression_type, delta_representation, &
-                                      ens_size, inflate, nc
+                                      regression_type, regression_check, &
+                                      delta_representation, ens_size, inflate, nc
     
     call initialize_utilities()
 
@@ -154,13 +155,15 @@ program state_regression
             call state_regress_relativefrac(obs_prior, obs_post, ens_prior_dr, ens_post_dr, ens_size, nc, &
                                             dist_for_obs, dist_for_state, &
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                            state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+                                            state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
+                                            regression_check)
             call get_state_from_delta_representation(ens_post_a, ens_post_v, H_l, H_u, ens_post_dr, nc, ens_size)
         else
             call state_regress_relativefrac(obs_prior, obs_post, ens_prior_a, ens_post_a, ens_size, nc, &
                                             dist_for_obs, dist_for_state, &
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                            state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
+                                            state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
+                                            regression_check)
             call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
         end if 
         call cpu_time(end_time)
