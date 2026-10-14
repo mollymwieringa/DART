@@ -352,7 +352,6 @@ def setup(case, spinup_case, obs_type, ens_size):
         namelist['setup_nml']['input_lat'] = lat
         namelist['setup_nml']['input_lon'] = lon
         namelist['setup_nml']['runtype_startup'] = True
-        namelist['setup_nml']['kcatbound'] = 1
         namelist['forcing_nml']['data_dir'] = '/glade/work/mollyw/Projects/cice-scm-da/data/forcings/'+case.split('_')[0]+'/free/'
         namelist['forcing_nml']['atm_data_file'] = 'ATM_FORCING_'+inst_string+'.txt'
         namelist['forcing_nml']['ocn_data_file'] = 'OCN_FORCING_'+inst_string+'.txt'
