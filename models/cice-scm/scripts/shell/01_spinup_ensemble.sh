@@ -2,7 +2,7 @@
 ### Job Name
 #PBS -N spinup_icepack_ensemble
 ### Charging account
-#PBS -A P93300065
+#PBS -A P54048000
 ### Request one chunk of resources with 1 CPU and 10 GB of memory
 #PBS -l select=1:ncpus=1:mem=8GB
 ### Allow job to run up to 30 minutes
@@ -14,7 +14,7 @@
 #PBS -j oe
 ### send emails on abort and exit
 #PBS -m ae
-#PBS -M mmw906@uw.edu
+#PBS -M mollyw@ucar.edu
 
 export TMPDIR=/glade/derecho/scratch/$USER/temp
 mkdir -p $TMPDIR
@@ -24,6 +24,6 @@ mkdir -p $TMPDIR
 conda activate cice-scm-da
 
 ### Run analysis script
-python ../python/01_spinup_ensemble.py spinup_CoastalCanada mollyw uniform_ice CoastalCanada atm
+python ../python/01_spinup_ensemble.py SPINUP_CentralArctic mollyw CentralArctic
 
 
