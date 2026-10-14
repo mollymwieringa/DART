@@ -26,7 +26,7 @@ end_assim_date = datetime(int(sys.argv[8]),int(sys.argv[9]),int(sys.argv[10]))
 ens_size = 30
 
 case = loc+'_'+obs_type+'_'+regression_type+'_'+truth_member
-spinup_case = 'SPINUP_kcb1_'+loc
+spinup_case = 'SPINUP_'+loc
 ###############################################################
 # DEFINE HELPER FUNCTIONS                                     #
 ###############################################################
