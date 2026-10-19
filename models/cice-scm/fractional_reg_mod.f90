@@ -152,13 +152,10 @@ module fractional_reg_mod
         end do
 
         ! Regress in the space of the fractional amounts
-        do j = 1, nc
-            call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, 1, &
-                                      dist_for_obs, dist_for_state, &
-                                      obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                      state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-            xhat_post(:,j) = xhat_post_j
-        end do
+        call state_regress_probit(obs_prior, obs_post, xhat_prior, xhat_post, ens_size, nc, &
+                                  dist_for_obs, dist_for_state, obs_bounded_above, obs_bounded_below, &
+                                  obs_upper_bound, obs_lower_bound, state_bounded_above, &
+                                  state_bounded_below, state_upper_bound, state_lower_bound)
 
         open(unit=23, file=trim('probit_posterior.txt'), status='UNKNOWN', RECL=256)
         do i = 1, ens_size
