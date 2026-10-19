@@ -214,14 +214,10 @@ program state_regression
     else if (regression_type == 'linear_postprocess') then
         ! --- Linear regression + postprocessing ----------------------------------------------------------
         call cpu_time(start_time)
-        ! nc_exp = nc + 1
-        do j = 1, nc
-            call state_regress_probit(obs_prior, obs_post, ens_prior_a(:,j), ens_post_temp, ens_size, 1, &
-                                      NORMAL_DISTRIBUTION, NORMAL_DISTRIBUTION, &
-                                      .false., .false., obs_upper_bound, obs_lower_bound, &
-                                      .false., .false., state_upper_bound, state_lower_bound)
-            ens_post_a(:,j) = ens_post_temp
-        end do
+        call state_regress_probit(obs_prior, obs_post, ens_prior_a, ens_post_a, ens_size, nc, &
+                                  NORMAL_DISTRIBUTION, NORMAL_DISTRIBUTION, &
+                                  .false., .false., obs_upper_bound, obs_lower_bound, &
+                                  .false., .false., state_upper_bound, state_lower_bound)
         call cpu_time(end_time)
         print *, 'Time for regression by linear (DART default): ', end_time - start_time
         
