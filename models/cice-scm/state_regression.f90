@@ -189,16 +189,10 @@ program state_regression
     else if (regression_type == 'probit_postprocess') then
         ! --- Probit + postprocessing ---------------------------------------------------------------------
         call cpu_time(start_time)
-        do j = 1, nc
-            call state_regress_probit(obs_prior, obs_post, ens_prior_a(:,j), ens_post_temp, ens_size, 1, &
-                                      dist_for_obs, dist_for_state, &
-                                      obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                      state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-                ! call update_from_obs_inc(obs_prior, obs_prior_mean, obs_prior_var, &
-                !                          obs_inc, xhat_prior(:,j), ens_size, xhat_inc_j, &
-                !                          reg_coef_j, net_a)
-            ens_post_a(:,j) = ens_post_temp
-        end do
+        call state_regress_probit(obs_prior, obs_post, ens_prior_a, ens_post_a, ens_size, nc, &
+                                  dist_for_obs, dist_for_state, obs_bounded_above, obs_bounded_below, &
+                                  obs_upper_bound, obs_lower_bound, state_bounded_above, & 
+                                  state_bounded_below, state_upper_bound, state_lower_bound)
         call cpu_time(end_time)
         print *, 'Time for regression by probit (DART default): ', end_time - start_time
         
@@ -216,12 +210,6 @@ program state_regression
         call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         call cpu_time(end_time)
         print *, 'Time for probit postprocessing: ', end_time - start_time
-
-        ! open(unit=23, file=trim('ens_post_probit_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        ! do i = 1, ens_size
-        !     write(23, *) ens_post(i, :)
-        ! end do
-        ! close(23)
 
     else if (regression_type == 'linear_postprocess') then
         ! --- Linear regression + postprocessing ----------------------------------------------------------

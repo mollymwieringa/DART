@@ -275,13 +275,13 @@ module fractional_reg_mod
         real(r8),           intent(in) :: obs_upper_bound, obs_lower_bound
         ! Declare local variables
         character(len=100)             :: errstring
-        integer                        :: i, j, ierr
+        integer                        :: j, ierr
         real(r8)                       :: net_a, reg_coef
         real(r8)                       :: probit_obs_prior_mean, probit_obs_prior_var
         real(r8)                       :: probit_obs_inc(ens_size)
         real(r8)                       :: probit_obs_prior(ens_size), probit_obs_post(ens_size)
-        real(r8)                       :: probit_state_inc(ens_size, nc)
-        real(r8)                       :: probit_ens_prior(ens_size, nc), probit_ens_post(ens_size, nc)
+        real(r8)                       :: probit_state_inc(ens_size)
+        real(r8)                       :: probit_ens_prior(ens_size), probit_ens_post(ens_size)
         type(distribution_params_type) :: obs_dist_params, state_dist_params
 
         ! 1. Transform the observation space update into probit space and recalculate the increments
@@ -306,31 +306,34 @@ module fractional_reg_mod
                 probit_obs_inc = probit_obs_post - probit_obs_prior
                 probit_obs_prior_mean = sum(probit_obs_prior) / ens_size
                 probit_obs_prior_var = sum((probit_obs_prior - probit_obs_prior_mean)**2) / (ens_size - 1)
-
-                ! 2. Transform the state variables to probit space
-                write(*,*) 'Transforming prior state to probit...'
-                call transform_to_probit(ens_size, ens_prior, dist_for_state, state_dist_params, &
-                                         probit_ens_prior, .false., state_bounded_below, state_bounded_above, &
-                                         state_lower_bound, state_upper_bound, ierr)
-                if (ierr /= 0) then
-                    ens_post = ens_prior
-                    write(errstring, *) "Error in transform_to_probit for state prior, exiting w no update..."
-                    call error_handler(E_MSG, 'state_regress_probit', trim(errstring))
-                else
-                    ! 3. Call obs_updates ens
-                    net_a = 1.0_r8   ! This is a null value; net_a is not used at this time.
-                    call update_from_obs_inc(probit_obs_prior, probit_obs_prior_mean, probit_obs_prior_var, &
-                                             probit_obs_inc, probit_ens_prior, ens_size, probit_state_inc, &
-                                             reg_coef, net_a)
-
-                    probit_ens_post = probit_ens_prior + probit_state_inc
-
-                    ! 4. Transform back from probit space to original space
-                    write(*,*) 'Transforming all back from probit...'
-                    call transform_from_probit(ens_size, probit_ens_post, state_dist_params, ens_post)
-                end if
             end if
-        end if
+        end if 
+
+        ! 2. Transform the state variables to probit space
+        do j = 1, nc
+            write(*,*) 'Transforming prior state to probit...'
+            call transform_to_probit(ens_size, ens_prior(:, j), dist_for_state, state_dist_params, &
+                                     probit_ens_prior, .false., state_bounded_below, state_bounded_above, &
+                                     state_lower_bound, state_upper_bound, ierr)
+            if (ierr /= 0) then
+                ens_post(:,j) = ens_prior(:,j)
+                write(errstring, *) "Error in transform_to_probit for state prior, exiting w no update..."
+                call error_handler(E_MSG, 'state_regress_probit', trim(errstring))
+            else
+                ! 3. Call obs_updates ens
+                net_a = 1.0_r8   ! This is a null value; net_a is not used at this time.
+                call update_from_obs_inc(probit_obs_prior, probit_obs_prior_mean, probit_obs_prior_var, &
+                                         probit_obs_inc, probit_ens_prior, ens_size, probit_state_inc, &
+                                         reg_coef, net_a)
+
+                probit_ens_post = probit_ens_prior + probit_state_inc
+
+                ! 4. Transform back from probit space to original space
+                write(*,*) 'Transforming all back from probit...'
+                call transform_from_probit(ens_size, probit_ens_post, state_dist_params, ens_post_temp)
+                ens_post(:, j) = ens_post_temp
+            end if
+        end do
 
     end subroutine state_regress_probit
 
