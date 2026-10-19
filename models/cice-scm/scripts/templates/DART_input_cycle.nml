@@ -166,8 +166,9 @@
     regression_check = .false.
     delta_representation = .false.
     ens_size = 29
-    inflate = 0.5
+    inflate = 0
     nc = 5
+    kcatbound = 1
 /
 
 &probit_transform_nml
