@@ -109,9 +109,11 @@ module fractional_reg_mod
     ! Subroutine to perform regression with relative fractional amount constraint
     ! Does not care about the distribution of the ensemble
     subroutine state_regress_relativefrac(obs_prior, obs_post, ens_prior, ens_post, ens_size, nc, &
-                                          dist_for_obs, dist_for_state, &
-                                          obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
-                                          state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
+                                          a_post, xhat_prior, xhat_post, dist_for_obs, dist_for_state, &
+                                          obs_bounded_above, obs_bounded_below, &
+                                          obs_upper_bound, obs_lower_bound, & 
+                                          state_bounded_above, state_bounded_below, &
+                                          state_upper_bound, state_lower_bound, &
                                           regression_check)
 
         ! This routine assumes that the state variables are fractional amounts whose sum is constrained to be 
@@ -120,21 +122,21 @@ module fractional_reg_mod
         ! represented in the state vector. 
 
         ! Declare routine variables
-        integer,   intent(in) :: ens_size, nc
-        integer,   intent(in) :: dist_for_obs, dist_for_state
-        logical,   intent(in) :: state_bounded_above, state_bounded_below
-        logical,   intent(in) :: obs_bounded_above, obs_bounded_below, regression_check
-        real(r8),  intent(in) :: obs_prior(ens_size), obs_post(ens_size)
-        real(r8),  intent(in) :: ens_prior(ens_size, nc)
-        real(r8), intent(out) :: ens_post(ens_size, nc)
-        real(r8),  intent(in) :: state_upper_bound, state_lower_bound
-        real(r8),  intent(in) :: obs_upper_bound, obs_lower_bound
+        integer,    intent(in) :: ens_size, nc
+        integer,    intent(in) :: dist_for_obs, dist_for_state
+        logical,    intent(in) :: state_bounded_above, state_bounded_below
+        logical,    intent(in) :: obs_bounded_above, obs_bounded_below, regression_check
+        real(r8),   intent(in) :: obs_prior(ens_size), obs_post(ens_size)
+        real(r8),   intent(in) :: ens_prior(ens_size, nc)
+        real(r8),  intent(out) :: ens_post(ens_size, nc), a_post(ens_size)
+        real(r8),  intent(out) :: xhat_prior(ens_size, nc), xhat_post(ens_size, nc)
+        real(r8),   intent(in) :: state_upper_bound, state_lower_bound
+        real(r8),   intent(in) :: obs_upper_bound, obs_lower_bound
         ! Declare local variables
         character(len=100)    :: errstring
         integer               :: i, j
         real(r8)              :: mass_check
-        real(r8)              :: xhat_prior(ens_size, nc), xhat_post(ens_size, nc)
-        real(r8)              :: a_post(ens_size), Np(ens_size), Na(ens_size), obs_inc(ens_size)
+        real(r8)              :: Np(ens_size), Na(ens_size), obs_inc(ens_size)
 
         ! Translate x_prior into xhat_prior (assumes multiplication by a_prior, which is always 1.0)
         xhat_prior = ens_prior
@@ -146,21 +148,11 @@ module fractional_reg_mod
         obs_inc = obs_post - obs_prior
         Na = Np - obs_inc
 
-        open(unit=23, file=trim('probit_prior.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) xhat_prior(i, :)
-        end do
-
         ! Regress in the space of the fractional amounts
         call state_regress_probit(obs_prior, obs_post, xhat_prior, xhat_post, ens_size, nc, &
                                   dist_for_obs, dist_for_state, obs_bounded_above, obs_bounded_below, &
                                   obs_upper_bound, obs_lower_bound, state_bounded_above, &
                                   state_bounded_below, state_upper_bound, state_lower_bound)
-
-        open(unit=23, file=trim('probit_posterior.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) xhat_post(i, :)
-        end do
 
         if (regression_check) then
             write(*, *) "Regression check is on. Checking that the regression reflects the observation increment across categories."
@@ -189,17 +181,16 @@ module fractional_reg_mod
         end if
 
         ! Calculate a_post and use it to translate back from xhat_post to ens_post
-        open(unit=23, file=trim('alpha_posterior.txt'), status='UNKNOWN', RECL=256)
         do i = 1, ens_size
             if (abs(Na(i) - 1.0_r8) <= 1e-16_r8) then
                 write(errstring, *) "Posterior null category for ensemble member ", i, " is 1.0 (to roundoff)"
                 call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
-                write(23, *) 1e16_r8
+                a_post(i) = 1e-16_r8
                 ens_post(i, :) = 0.0_r8
             else if (sum(xhat_post(i, :)) < 1e-16_r8) then
                 write(errstring, *) "Posterior xhat values for ensemble member ", i, " sum to zero (to roundoff)"
                 call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
-                write(23, *) 0.0_r8
+                a_post(i) = 0.0_r8
                 ens_post(i, :) = 0.0_r8
             else
                 a_post(i) = sum(xhat_post(i, :) / (1.0_r8 - Na(i)))
@@ -209,11 +200,9 @@ module fractional_reg_mod
                     write(errstring, *) "Posterior N value: ", Na(i), " Posterior xhat values: ", sum(xhat_post(i, :))
                     call error_handler(E_MSG, 'state_regress_relativefrac', trim(errstring))
                 end if
-                write(23, *) a_post(i)
                 ens_post(i, :) = xhat_post(i, :) / a_post(i)
             end if
         end do
-        close(23)
 
         ! Verify that the updated state variables are within bounds
         do i = 1, ens_size
@@ -335,7 +324,8 @@ module fractional_reg_mod
     end subroutine state_regress_probit
 
     ! Subroutine to perform CICE-style postprocessing after the "regression" step
-    subroutine postprocess(ens_post, ens_size, nc, state_bounded_above, state_bounded_below, &
+    subroutine postprocess(ens_post, ens_size, nc, &
+                           state_bounded_above, state_bounded_below, &
                            state_upper_bound, state_lower_bound, &
                            obs_bounded_above, obs_bounded_below, &
                            obs_upper_bound, obs_lower_bound)
@@ -400,16 +390,18 @@ module fractional_reg_mod
     end subroutine postprocess
 
     ! Subroutine to get delta representation (Boden & Grooms, 2025) from state
-    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, delta_representation, nc, ens_size, kcatbound)
+    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, &
+                                                   H_l, H_u, delta_representation, &
+                                                   h_midpoints, nc, ens_size, kcatbound)
 
         ! Declare variables
         integer,  intent(in)  :: nc, ens_size, kcatbound
-        integer                          :: n, i
+        integer               :: n, i
         real(r8), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc)
-        real(r8), intent(out) :: delta_representation(ens_size, nc*2),                &
-                                 H_l(ens_size, nc), H_u(ens_size, nc)
-        real(r8)              :: h_midpoints(ens_size, nc), deltaH(ens_size, nc),     &
-                                  x_r(ens_size, nc), x_l(ens_size, nc)
+        real(r8), intent(out) :: delta_representation(ens_size, nc*2), &
+                                 H_l(ens_size, nc), H_u(ens_size, nc), &
+                                 h_midpoints(ens_size, nc)
+        real(r8)              :: x_r(ens_size, nc), x_l(ens_size, nc), deltaH(ens_size, nc)
         real(r8)              :: H_bnds(nc)
         real(r8)              :: cc1, cc2, cc3, x1, rncat
         logical               :: mask_a_zero(ens_size, nc)
@@ -419,20 +411,10 @@ module fractional_reg_mod
         mask_a_zero = (ens_prior_a > 0)
         h_midpoints = ens_prior_v / ens_prior_a
         h_midpoints = merge(h_midpoints, 0.0_r8, mask_a_zero)
-        open(unit=23, file=trim('h_midpoints.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) h_midpoints(i, :)
-        end do
-        close(23)
 
         ! Step 2: calculate the ITD bounds
         call get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size, kcatbound)
         deltaH = H_u - H_l
-        open(unit=23, file=trim('deltaH.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) deltaH(i, :)
-        end do
-        close(23)
 
         ! Step 4: calculate the delta representation components for each category and ensemble member
         x_r = ens_prior_a * (H_u - h_midpoints)/deltaH
@@ -458,8 +440,8 @@ module fractional_reg_mod
     subroutine get_state_from_delta_representation(ens_post_a, ens_post_v, H_l, H_u, delta_representation, nc, ens_size)
 
         ! Declare variables
-        integer,             intent(in)  :: nc, ens_size
-        integer                          :: n
+        integer,  intent(in)  :: nc, ens_size
+        integer               :: n
         real(r8), intent(in)  :: delta_representation(ens_size, nc*2), &
                                             H_l(ens_size, nc), H_u(ens_size, nc)
         real(r8), intent(out) :: ens_post_a(ens_size, nc), ens_post_v(ens_size, nc)

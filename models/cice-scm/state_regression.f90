@@ -3,6 +3,9 @@ program state_regression
     use types_mod,               only : r8
     use utilities_mod,           only : initialize_utilities, finalize_utilities,   &
                                         check_namelist_read, find_namelist_in_file
+    use netcdf_utilities_mod,    only : nc_create_file, nc_close_file, nc_define_dimension, &
+                                        nc_define_double_variable, nc_add_global_attribute, &
+                                        nc_end_define_mode, nc_put_variable
     use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
     use fractional_reg_mod,      only : state_regress_disaggregation, state_regress_relativefrac,   &
                                         state_regress_probit, get_delta_representation_from_state,  &
@@ -10,19 +13,20 @@ program state_regression
 
     ! Declare variables
     integer               :: ens_size, nc, nc_exp, nc2, kcatbound
-    integer               :: iunit, io, i, j, istatus
+    integer               :: iunit, io, i, j, istatus, ncid
     integer               :: dist_for_obs, dist_for_state
     logical               :: state_bounded_below, state_bounded_above, fexists
     logical               :: obs_bounded_below, obs_bounded_above
     logical               :: delta_representation, regression_check
-    character(len=128)    :: obs_dist, regression_type
+    character(len=128)    :: obs_dist, regression_type, filename
     real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
     real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), &
                              ens_prior_a(:,:), ens_prior_v(:,:), ens_prior_dr(:,:), &
                              ens_post_a(:,:), ens_post_v(:,:), ens_post_dr(:,:), &
-                             H_l(:,:), H_u(:,:)
+                             a_post(:), xhat_prior(:,:), xhat_post(:,:), &
+                             H_l(:,:), H_u(:,:), h_midpoints(:,:)
     real(r8), allocatable :: asprd(:), fsprd(:), mean(:), inflate_cat(:)
 
     ! Handle namelist reading 
@@ -51,8 +55,12 @@ program state_regression
     allocate(ens_post_v(ens_size, nc))
     allocate(ens_prior_dr(ens_size, nc2))
     allocate(ens_post_dr(ens_size, nc2))
+    allocate(xhat_prior(ens_size, nc))
+    allocate(xhat_post(ens_size, nc))
     allocate(H_l(ens_size, nc))
     allocate(H_u(ens_size, nc))
+    allocate(h_midpoints(ens_size, nc))
+    allocate(a_post(ens_size))
     allocate(asprd(nc))
     allocate(fsprd(nc))
     allocate(mean(nc))
@@ -132,6 +140,17 @@ program state_regression
     ! -------------------------------------------------------------------------------------------------
     ! PERFORM REGRESSION METHODS
     ! -------------------------------------------------------------------------------------------------
+    ! Initialize netcdf file for output
+    filename = trim('state_regression_output.nc')
+    ncid = nc_create_file(filename, 'state_regression')
+    call nc_define_dimension(ncid, 'member', ens_size, 'state_regression')
+    call nc_define_dimension(ncid, 'nc', nc, 'state_regression')
+    call nc_add_global_attribute(ncid, 'regression_type', trim(regression_type), 'state_regression')
+    call nc_add_global_attribute(ncid, 'obs_dist', trim(obs_dist), 'state_regression')
+    call nc_define_double_variable(ncid, 'state_prior_area', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'state_prior_volume', 'member', 'nc', 'state_regression')
+    call nc_put_variable(ncid, 'state_prior_area', ens_prior_a, 'state_regression')
+    call nc_put_variable(ncid, 'state_prior_volume', ens_prior_v, 'state_regression')
 
     if (regression_type == 'disaggregation') then
         ! --- Disaggregation ------------------------------------------------------------------------------
@@ -143,47 +162,44 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for regression by disaggregation: ', end_time - start_time
 
-        ! open(unit=23, file=trim('ens_post_disaggregation_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        ! do i = 1, ens_size
-        !     write(23, *) ens_post(i,:)
-        ! end do
-        ! close(23)
-
     else if (regression_type == 'relativefrac') then 
         ! --- Relative Fractional -------------------------------------------------------------------------
         call cpu_time(start_time)
 
         if (delta_representation) then
+            call nc_define_dimension(ncid, 'nc2', nc2, 'state_regression')
+            call nc_define_double_variable(ncid, 'state_prior_dr', 'member', 'nc2', 'state_regression')
+            call nc_define_double_variable(ncid, 'state_post_dr', 'member', 'nc2', 'state_regression')
+            call nc_define_double_variable(ncid, 'H_l', 'member', 'nc', 'state_regression')
+            call nc_define_double_variable(ncid, 'H_u', 'member', 'nc', 'state_regression')
+            
             ! Get the delta_representation from the state
-            call get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, ens_prior_dr, nc, ens_size, kcatbound)
+            call get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, ens_prior_dr, &
+                                                     h_midpoints, nc, ens_size, kcatbound)
             call state_regress_relativefrac(obs_prior, obs_post, ens_prior_dr, ens_post_dr, ens_size, nc2, &
-                                            dist_for_obs, dist_for_state, &
+                                            a_post, xhat_prior, xhat_post, dist_for_obs, dist_for_state, &
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                             state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
                                             regression_check)
             call get_state_from_delta_representation(ens_post_a, ens_post_v, H_l, H_u, ens_post_dr, nc, ens_size)
+
+            ! write the delta representation to the netcdf file
+            call nc_put_variable(ncid, 'state_prior_dr', ens_prior_dr, 'state_regression')
+            call nc_put_variable(ncid, 'state_post_dr', ens_post_dr, 'state_regression')
+            call nc_put_variable(ncid, 'H_l', H_l, 'state_regression')
+            call nc_put_variable(ncid, 'H_u', H_u, 'state_regression')
         else
             call state_regress_relativefrac(obs_prior, obs_post, ens_prior_a, ens_post_a, ens_size, nc, &
-                                            dist_for_obs, dist_for_state, &
+                                            a_post, xhat_prior, xhat_post, dist_for_obs, dist_for_state, &
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                             state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
                                             regression_check)
             call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         end if 
+        call nc_define_double_variable(ncid, 'alpha', 'member', 'state_regression')
+        call nc_put_variable(ncid, 'alpha', a_post, 'state_regression')
         call cpu_time(end_time)
         print *, 'Time for regression by relative fractional amount: ', end_time - start_time
-
-        inquire(file='alpha_prior.txt', exist=fexists)
-        if (fexists) then
-            istatus = rename('alpha_prior.txt', trim('alpha_prior_')//trim(obs_dist)//trim('.txt'))
-        endif
-        istatus = rename('alpha_posterior.txt', trim('alpha_posterior_')//trim(obs_dist)//trim('.txt'))
-        
-        ! open(unit=23, file=trim('ens_post_relativefrac_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        ! do i = 1, ens_size
-        !     write(23, *) ens_post(i,:)
-        ! end do
-        ! close(23)
 
     else if (regression_type == 'probit_postprocess') then
         ! --- Probit + postprocessing ---------------------------------------------------------------------
@@ -195,11 +211,8 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for regression by probit (DART default): ', end_time - start_time
         
-        open(unit=23, file=trim('ens_post_probit_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) ens_post_a(i, :)
-        end do
-        close(23)
+        call nc_define_double_variable(ncid, 'state_post_a_raw', 'member', 'nc', 'state_regression')
+        call nc_put_variable(ncid, 'state_post_a_raw', ens_post_a, 'state_regression')
 
         call cpu_time(start_time)
         call postprocess(ens_post_a, ens_size, nc, state_bounded_above, state_bounded_below, &
@@ -220,11 +233,8 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for regression by linear (DART default): ', end_time - start_time
         
-        open(unit=23, file=trim('ens_post_linear_raw_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        do i = 1, ens_size
-            write(23, *) ens_post_a(i, :)
-        end do
-        close(23)
+        call nc_define_double_variable(ncid, 'state_post_a_raw', 'member', 'nc', 'state_regression')
+        call nc_put_variable(ncid, 'state_post_a_raw', ens_post_a, 'state_regression')
 
         call cpu_time(start_time)
         call postprocess(ens_post_a, ens_size, nc, state_bounded_above, state_bounded_below, &
@@ -234,12 +244,6 @@ program state_regression
         call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         call cpu_time(end_time)
         print *, 'Time for linear regression postprocessing: ', end_time - start_time
-
-        ! open(unit=23, file=trim('ens_post_linear_postprocess_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-        ! do i = 1, ens_size
-        !     write(23, *) ens_post(i, :)
-        ! end do
-        ! close(23)
     else
         write(*,*) 'Regression type not recognized. Leaving this to crash...'
     end if
@@ -264,23 +268,14 @@ program state_regression
     !--------------------------------------------------------------------------------------------------
     ! Write the final posterior ensemble and inflation factors to file
     !--------------------------------------------------------------------------------------------------
-    open(unit=23, file=trim('ens_post_')//trim(regression_type)//trim('_')//trim(obs_dist)//trim('_area.txt'), status='UNKNOWN', RECL=256)
-    do i = 1, ens_size
-        write(23, *) ens_post_a(i, :)
-    end do
-    close(23)
-
-    open(unit=23, file=trim('ens_post_')//trim(regression_type)//trim('_')//trim(obs_dist)//trim('_vol.txt'), status='UNKNOWN', RECL=256)
-    do i = 1, ens_size
-        write(23, *) ens_post_v(i, :)
-    end do
-    close(23)
-
-    open(unit=23, file=trim('inflation_')//trim(regression_type)//trim('_')//trim(obs_dist)//trim('.txt'), status='UNKNOWN', RECL=256)
-    do j = 1, nc
-        write(23, *) inflate_cat(j)
-    end do
-    close(23)
+    call nc_define_double_variable(ncid, 'state_post_a', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'state_post_v', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'inflation', 'nc', 'state_regression')
+    call nc_put_variable(ncid, 'state_post_a', ens_post_a, 'state_regression')
+    call nc_put_variable(ncid, 'state_post_v', ens_post_v, 'state_regression')
+    call nc_put_variable(ncid, 'inflation', inflate_cat, 'state_regression')
+    call nc_end_define_mode(ncid, 'state_regression')
+    call nc_close_file(ncid, 'state_regression')
 
     ! -------------------------------------------------------------------------------------------------
     ! END
