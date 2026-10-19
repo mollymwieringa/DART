@@ -146,6 +146,11 @@ module fractional_reg_mod
         obs_inc = obs_post - obs_prior
         Na = Np - obs_inc
 
+        open(unit=23, file=trim('probit_prior.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) xhat_prior(i, :)
+        end do
+
         ! Regress in the space of the fractional amounts
         do j = 1, nc
             call state_regress_probit(obs_prior, obs_post, xhat_prior(:,j), xhat_post_j, ens_size, 1, &
@@ -155,8 +160,13 @@ module fractional_reg_mod
             xhat_post(:,j) = xhat_post_j
         end do
 
+        open(unit=23, file=trim('probit_posterior.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) xhat_post(i, :)
+        end do
+
         if (regression_check) then
-            write(errstring, *) "Regression check is on. Checking that the regression reflects the observation increment across categories."
+            write(*, *) "Regression check is on. Checking that the regression reflects the observation increment across categories."
             do i = 1, ens_size
                 ! if the summed change to categories differs from the obs inc by more than 0.1
                 mass_check = obs_inc(i) - sum(xhat_post(i, :) - xhat_prior(i, :))
@@ -390,35 +400,45 @@ module fractional_reg_mod
     end subroutine postprocess
 
     ! Subroutine to get delta representation (Boden & Grooms, 2025) from state
-    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, delta_representation, nc, ens_size)
+    subroutine get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, delta_representation, nc, ens_size, kcatbound)
 
         ! Declare variables
-        integer,             intent(in)  :: nc, ens_size
-        integer                          :: n
-        real(kind=dbl_kind), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc)
-        real(kind=dbl_kind), intent(out) :: delta_representation(ens_size, nc*2),                &
-                                            H_l(ens_size, nc), H_u(ens_size, nc)
-        real(kind=dbl_kind)              :: h_midpoints(ens_size, nc), deltaH(ens_size, nc),     &
-                                            x_r(ens_size, nc), x_l(ens_size, nc),                &
-                                            mask_a_zero(ens_size, nc),
-        real(kind=dbl_kind)              :: H_bnds(nc)
-        real(kind=dbl_kind)              :: cc1, cc2, cc3, x1, rncat
+        integer,  intent(in)  :: nc, ens_size, kcatbound
+        integer                          :: n, i
+        real(r8), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc)
+        real(r8), intent(out) :: delta_representation(ens_size, nc*2),                &
+                                 H_l(ens_size, nc), H_u(ens_size, nc)
+        real(r8)              :: h_midpoints(ens_size, nc), deltaH(ens_size, nc),     &
+                                  x_r(ens_size, nc), x_l(ens_size, nc)
+        real(r8)              :: H_bnds(nc)
+        real(r8)              :: cc1, cc2, cc3, x1, rncat
+        logical               :: mask_a_zero(ens_size, nc)
 
 
         ! Step 1: calculate the midpoint thickness from the prior
         mask_a_zero = (ens_prior_a > 0)
         h_midpoints = ens_prior_v / ens_prior_a
-        h_midpoints(.not. mask_a_zero) = 0
+        h_midpoints = merge(h_midpoints, 0.0_r8, mask_a_zero)
+        open(unit=23, file=trim('h_midpoints.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) h_midpoints(i, :)
+        end do
+        close(23)
 
         ! Step 2: calculate the ITD bounds
-        get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size)
+        call get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size, kcatbound)
         deltaH = H_u - H_l
+        open(unit=23, file=trim('deltaH.txt'), status='UNKNOWN', RECL=256)
+        do i = 1, ens_size
+            write(23, *) deltaH(i, :)
+        end do
+        close(23)
 
         ! Step 4: calculate the delta representation components for each category and ensemble member
         x_r = ens_prior_a * (H_u - h_midpoints)/deltaH
         x_l = ens_prior_a * (h_midpoints - H_l)/deltaH
-        x_r(.not. mask_a_zero) = 0
-        x_l(.not. mask_a_zero) = 0
+        x_r = merge(x_r, 0.0_r8, mask_a_zero)
+        x_l = merge(x_l, 0.0_r8, mask_a_zero)
 
         ! Step 5. interleave the left and right components into the delta representation array
         do n = 1, nc
@@ -440,9 +460,9 @@ module fractional_reg_mod
         ! Declare variables
         integer,             intent(in)  :: nc, ens_size
         integer                          :: n
-        real(kind=dbl_kind), intent(in)  :: delta_representation(ens_size, nc*2), &
+        real(r8), intent(in)  :: delta_representation(ens_size, nc*2), &
                                             H_l(ens_size, nc), H_u(ens_size, nc)
-        real(kind=dbl_kind), intent(out) :: ens_post_a(ens_size, nc), ens_post_v(ens_size, nc)
+        real(r8), intent(out) :: ens_post_a(ens_size, nc), ens_post_v(ens_size, nc)
 
         ! Step 1: extract the left and right components from the delta representation array
         ! Note that the v posterior calculation assumes that the upper bound on the thickest category stays the same
@@ -455,26 +475,27 @@ module fractional_reg_mod
     end subroutine get_state_from_delta_representation
 
     ! Subroutine to rebalance volume for consistency with area
-    subroutine rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+    subroutine rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
 
         ! Declare variables 
-        integer,             intent(in)  :: nc, ens_size
-        real(kind=dbl_kind), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc), &
-                                            ens_post_a(ens_size, nc)
-        real(kind=dbl_kind), intent(out) :: ens_post_v(ens_size, nc)
-        real(kind=dbl_kind)              :: mask_a_zero(ens_size, nc), prior_midpoints(ens_size, nc), &
-                                            H_l(ens_size, nc), H_u(ens_size, nc), uniform_midpoints(ens_size, nc), &
-                                            prior_a(nc), prior_v(nc), post_a(nc), post_v(nc)
+        integer,  intent(in)  :: nc, ens_size, kcatbound
+        real(r8), intent(in)  :: ens_prior_a(ens_size, nc), ens_prior_v(ens_size, nc), &
+                                 ens_post_a(ens_size, nc)
+        real(r8), intent(out) :: ens_post_v(ens_size, nc)
+        real(r8)              :: prior_midpoints(ens_size, nc), uniform_midpoints(ens_size, nc), &
+                                 H_l(ens_size, nc), H_u(ens_size, nc),  &
+                                 prior_a(nc), prior_v(nc), post_a(nc), post_v(nc)
+        logical               :: mask_a_zero(ens_size, nc)
         character(len=100)               :: errstring
         integer                          :: e, n
         
         ! Step 1. Get prior midpoints
         mask_a_zero = (ens_prior_a > 0)
         prior_midpoints = ens_prior_v / ens_prior_a
-        prior_midpoints(.not. mask_a_zero) = 0
+        prior_midpoints = merge(prior_midpoints, 0.0_r8, mask_a_zero)
 
         ! Step 2: calculate the ITD bounds and standard midpoints
-        call get_ITD_bounds(prior_midpoints, H_l, H_u, nc, ens_size)
+        call get_ITD_bounds(prior_midpoints, H_l, H_u, nc, ens_size, kcatbound)
         uniform_midpoints = (H_l + H_u) / 2
 
         ! Step 3: 
@@ -484,20 +505,20 @@ module fractional_reg_mod
             post_a = ens_post_a(e, :)
             do n = 1, nc
                 ! 1. if ice area is present in both old and new  
-                if (post_a(n) > 0) and (prior_a(n) > 0) then
+                if (post_a(n) > 0 .and. prior_a(n) > 0) then
                     if (post_a(n) <= 1e-6) then
                         post_v(n) = post_a(n) * uniform_midpoints(e, n)
-                    else if
+                    else 
                         post_v(n) = post_a(n) * prior_midpoints(e, n)
                     end if
                 ! 2. there was no ice, but DA added ice area 
-                else if (post_a(n) > 0) and (prior_a(n) <= 0) then
+                else if (post_a(n) > 0 .and. prior_a(n) <= 0) then
                     post_v(n) = post_a(n) * uniform_midpoints(e, n)   
                 ! 3. there was ice area, but DA removed it  
-                else if (post_a(n) <= 0) and (prior_a(n) > 0) then
+                else if (post_a(n) <= 0 .and. prior_a(n) > 0) then
                     post_v(n) = post_a(n) * 0.0
                 ! 4. there was no ice and there is still no ice
-                else if (post_a(n) <= 0) and (prior_a(n) <= 0) then
+                else if (post_a(n) <= 0 .and. prior_a(n) <= 0) then
                     post_v(n) = post_a(n) * 0.0
                 else
                     write(errstring, *) "Error in volume rebalancing. Something went wrong with the logic."
@@ -510,30 +531,44 @@ module fractional_reg_mod
     end subroutine rebalance_volume
 
     ! Subroutine to get the category bounds based on nc
-    subroutine get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size)
+    subroutine get_ITD_bounds(h_midpoints, H_l, H_u, nc, ens_size, kcatbound)
 
         ! Declare variables
-        integer,             intent(in)  :: n, nc, ens_size
-        real(kind=dbl_kind), intent(in)  :: h_midpoints(ens_size, nc)
-        real(kind=dbl_kind), intent(out) :: H_l(ens_size, nc), H_u(ens_size, nc)
-        real(kind=dbl_kind)              :: H_bnds(nc)
-        real(kind=dbl_kind)              :: cc1, cc2, cc3, x1, rncat
+        integer,  intent(in)  :: nc, ens_size, kcatbound
+        real(r8), intent(in)  :: h_midpoints(ens_size, nc)
+        real(r8), intent(out) :: H_l(ens_size, nc), H_u(ens_size, nc)
+        integer               :: e, n
+        real(r8)              :: H_bnds(nc)
+        real(r8)              :: cc1, cc2, cc3, x1, rncat
         
         ! Calculate category bounds
-        rncat = real(nc, kind=dbl_kind)
-        cc1 = 3.0_dbl_kind / rncat
-        cc2 = 15.0_dbl_kind * cc1
-        cc3 = 3.0_dbl_kind
-        H_bnds(1) = 0.0_dbl_kind
-        do n = 2, nc
-            x1 = real(n-1, kind=dbl_kind) / rncat
-            H_bnds(n) = H_bnds(n-1) + cc1 + cc2 * (1.0_dbl_kind + tanh(cc3*(x1-1.0_dbl_kind)))
-        end do 
+        rncat = real(nc, kind=r8)
+        H_bnds(1) = 0.0_r8
+        if (kcatbound == 0) then
+            cc1 = 3.0_r8 / rncat
+            cc2 = 15.0_r8 * cc1
+            cc3 = 3.0_r8
+            do n = 2, nc
+                x1 = real(n-1, kind=r8) / rncat
+                H_bnds(n) = H_bnds(n-1) + cc1 + cc2 * (1.0_r8 + tanh(cc3*(x1-1.0_r8)))
+            end do 
+        else if (kcatbound == 1) then
+            cc1 = 3.0_r8 / rncat
+            cc2 = 0.5_r8 / rncat
+            do n = 2, nc
+                x1 = real(n-1, kind=r8)
+                H_bnds(n) = x1 * (cc1 + cc2 * (x1 - 1.0_r8))
+            end do 
+        else
+            write(*,*) "Error: kcatbound must be 0 or 1."
+        end if
 
         ! Calculate the ensemble array of upper and lower bounds
-        H_l(:, :) = H_bnds
-        H_u(:, 1:nc-1) = H_bnds(2:nc)
-        H_u(:, nc) = 3 * h_midpoints(:, nc) - 2*H_bnds(nc)
+        do e = 1, ens_size
+            H_l(e, :) = H_bnds
+            H_u(e, 1:nc-1) = H_bnds(2:nc)
+            H_u(e, nc) = 3 * h_midpoints(e, nc) - 2*H_bnds(nc)
+        end do
 
     end subroutine get_ITD_bounds
 
