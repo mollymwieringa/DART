@@ -25,7 +25,7 @@ end_assim_date = datetime(int(sys.argv[8]),int(sys.argv[9]),int(sys.argv[10]))
 
 ens_size = 30
 
-case = loc+'_'+obs_type+'_'+regression_type+'_'+truth_member
+case = loc+'_'+obs_type+'test4_'+regression_type+'_'+truth_member
 spinup_case = 'SPINUP_'+loc
 ###############################################################
 # DEFINE HELPER FUNCTIONS                                     #
@@ -55,13 +55,21 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
     comd = 'cp /glade/work/mollyw/dart_manhattan/models/cice-scm/scripts/templates/DART_input_cycle.nml input.nml'
     os.system(comd)
     dart_nml = f90nml.read('input.nml')
+    if obs_type == 'SIC':
+        dart_nml['obs_kind_nml']['assimilate_these_obs_types'] = 'SAT_SEAICE_AGREG_CONCENTR'
+    elif obs_type == 'SIT':
+        dart_nml['obs_kind_nml']['assimilate_these_obs_types'] = 'SAT_SEAICE_AGREG_THICKNESS'
+    else:
+        print('obs_type not recognized! Exiting...')
+        sys.exit()
     dart_nml['obs_increments_nml']['bounded_above'] = True
     dart_nml['obs_increments_nml']['upper_bound'] = 1.0
     dart_nml['state_regression_nml']['obs_bounded_above'] = True
     dart_nml['state_regression_nml']['obs_upper_bound'] = 1.0
     dart_nml['state_regression_nml']['regression_type'] = regression_type
     dart_nml['state_regression_nml']['delta_representation'] = True
-    dart_nml['state_regression_nml']['regression_check'] = False
+    dart_nml['state_regression_nml']['regression_check'] = True
+    dart_nml['state_regression_nml']['kcatbound'] = 1
     dart_nml.write('input.nml', force=True)
 
 
@@ -150,6 +158,9 @@ def run_assimilation(icepack_path, storage_path, obs_type, regression_type, assi
             if regression_type in ['probit_postprocess', 'linear_postprocess']:
                 comd=f'mv ens_post_'+regression_type[:-12]+'_raw_bnrh.txt '+day_path+'/ens_post_'+regression_type[:-12]+'_raw.txt'
                 os.system(comd)
+            if regression_type == 'relativefrac':
+                comd=f'mv probit_posterior.txt '+day_path+'/probit_posterior.txt'
+                os.system(comd)
             if os.path.isfile('alpha_prior_bnrh.txt'):
                 comd=f'mv alpha_prior_bnrh.txt '+day_path+'/alpha_prior.txt'
                 os.system(comd)
@@ -181,7 +192,7 @@ def run_icepack(icepack_path, storage_path, obs_type, assim_date, truth_member):
         # run the model
         comd = './icepack > icepack.out'
         os.system(comd)
-        sleep(2)
+        # sleep(2)
 
         # check if the simulation finished correctly
         restart_file = 'restart/iced.'+next_day_str+'-00000.nc'
@@ -348,7 +359,7 @@ def setup(case, spinup_case, obs_type, ens_size):
 
         # copy in the relevant namelist
         # read namelist template
-        namelist = f90nml.read('/glade/work/mollyw/Projects/fractional-comp/data/templates/icepack_in.setup')
+        namelist = f90nml.read('/glade/derecho/scratch/mollyw/ICEPACK_RUNS/FREE_'+case.split('_')[0]+'/mem'+inst_string+'/icepack_in')
         namelist['setup_nml']['ice_ic'] = restart_file
         namelist['setup_nml']['input_lat'] = lat
         namelist['setup_nml']['input_lon'] = lon
