@@ -3,7 +3,8 @@ program state_regression
     use types_mod,               only : r8
     use utilities_mod,           only : initialize_utilities, finalize_utilities,   &
                                         check_namelist_read, find_namelist_in_file
-    use netcdf_utilities_mod,    only : nc_create_file, nc_close_file, nc_define_dimension, &
+    use netcdf_utilities_mod,    only : nc_open_file_readonly, nc_get_variable, &
+                                        nc_create_file, nc_close_file, nc_define_dimension, &
                                         nc_define_double_variable, nc_add_global_attribute, &
                                         nc_end_define_mode, nc_put_variable
     use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
@@ -18,7 +19,7 @@ program state_regression
     logical               :: state_bounded_below, state_bounded_above, fexists
     logical               :: obs_bounded_below, obs_bounded_above
     logical               :: delta_representation, regression_check
-    character(len=128)    :: obs_dist, regression_type, filename
+    character(len=256)    :: obs_dist, regression_type, filename
     real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
@@ -69,18 +70,14 @@ program state_regression
     ! -------------------------------------------------------------------------------------------------
     ! BEGIN 
     ! -------------------------------------------------------------------------------------------------
-    ! Get the state prior ensemble information
-    open(unit=23, file='prior_ensemble_area.txt', status='OLD')
-    do i = 1, ens_size
-        read(23, *) ens_prior_a(i,:)
-    end do
-    close(23)
-
-    open(unit=23, file='prior_ensemble_vol.txt', status='OLD')
-    do i = 1, ens_size
-        read(23, *) ens_prior_v(i,:)
-    end do
-    close(23)
+    ! Get the obs incrementing ensemble information
+    ncid = nc_open_file_readonly(trim('obs_increments_output.nc'), 'read obs increment ensemble')
+    call nc_get_variable(ncid, 'obs_prior', obs_prior, 'read obs increment ensemble')
+    call nc_get_variable(ncid, 'obs_post', obs_post, 'read obs increment ensemble')
+    call nc_get_variable(ncid, 'obs_incs', obs_inc, 'read obs increment ensemble')
+    call nc_get_variable(ncid, 'state_prior_a', ens_prior_a, 'read prior observation ensemble')
+    call nc_get_variable(ncid, 'state_prior_v', ens_prior_v, 'read prior observation ensemble')
+    call nc_close_file(ncid, 'read obs increment ensemble')
 
     ! calculate the ens_prior spread across ensemble member for each state variable
     do j = 1, nc
@@ -88,54 +85,17 @@ program state_regression
         fsprd(j) = sqrt(sum((ens_prior_a(:,j) - mean(j))**2) / real(ens_size-1, r8))
     end do
 
-    ! get the obs prior ensemble information
-    open(unit=23, file='obs_prior_ensemble.txt', status='OLD')
-    do i = 1, ens_size
-        read(23, *) obs_prior(i)
-    end do
-    close(23)
 
     ! Get the obs increments from the prior ensemble and observation information
     if (obs_dist == 'bnrh') then
         dist_for_obs = BOUNDED_NORMAL_RH_DISTRIBUTION
         dist_for_state = BOUNDED_NORMAL_RH_DISTRIBUTION
-        ! get the obs posterior information
-        open(unit=23, file='obs_post_ensemble_bnrhf.txt', status='OLD')
-        do i = 1, ens_size
-            read(23, *) obs_post(i)
-        end do
-        close(23)
-
-        open(unit=23, file='obs_increments_bnrhf.txt', status='OLD')
-    else if (obs_dist == 'kde') then
-        dist_for_obs = KDE_DISTRIBUTION
-        dist_for_state = KDE_DISTRIBUTION
-        ! get the obs posterior information
-        open(unit=23, file='obs_post_ensemble_kde.txt', status='OLD')
-        do i = 1, ens_size
-            read(23, *) obs_post(i)
-        end do
-        close(23)
-        open(unit=23, file='obs_increments_kde.txt', status='OLD')
     else 
         dist_for_obs = NORMAL_DISTRIBUTION
         dist_for_state = NORMAL_DISTRIBUTION
-        ! get the obs posterior information
-        open(unit=23, file='obs_post_ensemble_norm.txt', status='OLD')
-        do i = 1, ens_size
-            read(23, *) obs_post(i)
-        end do
-        close(23)
         print *, 'Supplied observation distribution type is: ', obs_dist, '. By default, normal increments assumed.'
         print *, 'Please ensure this is correct if obs_dist is not normal in the namelist.'
-        open(unit=23, file='obs_increments_norm.txt', status='OLD')
     end if
-
-    print *, 'Reading observation increments from obs adjustments with a ', obs_dist, ' distribution in the QCEF.'
-    do i = 1, ens_size
-        read(23, *) obs_inc(i)
-    end do
-    close(23)
 
     ! -------------------------------------------------------------------------------------------------
     ! PERFORM REGRESSION METHODS
@@ -146,12 +106,32 @@ program state_regression
     call nc_define_dimension(ncid, 'member', ens_size, 'state_regression')
     call nc_define_dimension(ncid, 'nc', nc, 'state_regression')
     call nc_add_global_attribute(ncid, 'regression_type', trim(regression_type), 'state_regression')
-    call nc_add_global_attribute(ncid, 'obs_dist', trim(obs_dist), 'state_regression')
     call nc_define_double_variable(ncid, 'state_prior_area', 'member', 'nc', 'state_regression')
     call nc_define_double_variable(ncid, 'state_prior_volume', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'state_post_a', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'state_post_v', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'inflation', 'nc', 'state_regression')
+    if (delta_representation) then
+        call nc_define_dimension(ncid, 'nc2', nc2, 'state_regression')
+        call nc_define_double_variable(ncid, 'state_prior_dr', 'member', 'nc2', 'state_regression')
+        call nc_define_double_variable(ncid, 'state_post_dr', 'member', 'nc2', 'state_regression')
+        call nc_define_double_variable(ncid, 'H_l', 'member', 'nc', 'state_regression')
+        call nc_define_double_variable(ncid, 'H_u', 'member', 'nc', 'state_regression')
+    endif
+    if (regression_type == 'relativefrac') then
+        call nc_define_double_variable(ncid, 'alpha', 'member', 'state_regression')
+    else if (regression_type == 'probit_postprocess' .or. regression_type == 'linear_postprocess') then
+        call nc_define_double_variable(ncid, 'state_post_a_raw', 'member', 'nc', 'state_regression')
+    else
+        print *, 'standard regression variables only!'
+    end if 
+    call nc_end_define_mode(ncid, 'state_regression')
+
+    ! Load the prior ensemble information.
     call nc_put_variable(ncid, 'state_prior_area', ens_prior_a, 'state_regression')
     call nc_put_variable(ncid, 'state_prior_volume', ens_prior_v, 'state_regression')
 
+    ! perform regressions 
     if (regression_type == 'disaggregation') then
         ! --- Disaggregation ------------------------------------------------------------------------------
         call cpu_time(start_time)
@@ -167,12 +147,6 @@ program state_regression
         call cpu_time(start_time)
 
         if (delta_representation) then
-            call nc_define_dimension(ncid, 'nc2', nc2, 'state_regression')
-            call nc_define_double_variable(ncid, 'state_prior_dr', 'member', 'nc2', 'state_regression')
-            call nc_define_double_variable(ncid, 'state_post_dr', 'member', 'nc2', 'state_regression')
-            call nc_define_double_variable(ncid, 'H_l', 'member', 'nc', 'state_regression')
-            call nc_define_double_variable(ncid, 'H_u', 'member', 'nc', 'state_regression')
-            
             ! Get the delta_representation from the state
             call get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, ens_prior_dr, &
                                                      h_midpoints, nc, ens_size, kcatbound)
@@ -196,7 +170,6 @@ program state_regression
                                             regression_check)
             call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         end if 
-        call nc_define_double_variable(ncid, 'alpha', 'member', 'state_regression')
         call nc_put_variable(ncid, 'alpha', a_post, 'state_regression')
         call cpu_time(end_time)
         print *, 'Time for regression by relative fractional amount: ', end_time - start_time
@@ -211,7 +184,6 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for regression by probit (DART default): ', end_time - start_time
         
-        call nc_define_double_variable(ncid, 'state_post_a_raw', 'member', 'nc', 'state_regression')
         call nc_put_variable(ncid, 'state_post_a_raw', ens_post_a, 'state_regression')
 
         call cpu_time(start_time)
@@ -233,7 +205,6 @@ program state_regression
         call cpu_time(end_time)
         print *, 'Time for regression by linear (DART default): ', end_time - start_time
         
-        call nc_define_double_variable(ncid, 'state_post_a_raw', 'member', 'nc', 'state_regression')
         call nc_put_variable(ncid, 'state_post_a_raw', ens_post_a, 'state_regression')
 
         call cpu_time(start_time)
@@ -268,13 +239,10 @@ program state_regression
     !--------------------------------------------------------------------------------------------------
     ! Write the final posterior ensemble and inflation factors to file
     !--------------------------------------------------------------------------------------------------
-    call nc_define_double_variable(ncid, 'state_post_a', 'member', 'nc', 'state_regression')
-    call nc_define_double_variable(ncid, 'state_post_v', 'member', 'nc', 'state_regression')
-    call nc_define_double_variable(ncid, 'inflation', 'nc', 'state_regression')
+
     call nc_put_variable(ncid, 'state_post_a', ens_post_a, 'state_regression')
     call nc_put_variable(ncid, 'state_post_v', ens_post_v, 'state_regression')
     call nc_put_variable(ncid, 'inflation', inflate_cat, 'state_regression')
-    call nc_end_define_mode(ncid, 'state_regression')
     call nc_close_file(ncid, 'state_regression')
 
     ! -------------------------------------------------------------------------------------------------
