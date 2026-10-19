@@ -134,7 +134,7 @@ module fractional_reg_mod
         integer               :: i, j
         real(r8)              :: mass_check
         real(r8)              :: xhat_prior(ens_size, nc), xhat_post(ens_size, nc)
-        real(r8)              :: a_post(ens_size), xhat_post_j(ens_size), Np(ens_size), Na(ens_size), obs_inc(ens_size)
+        real(r8)              :: a_post(ens_size), Np(ens_size), Na(ens_size), obs_inc(ens_size)
 
         ! Translate x_prior into xhat_prior (assumes multiplication by a_prior, which is always 1.0)
         xhat_prior = ens_prior
@@ -277,7 +277,7 @@ module fractional_reg_mod
         real(r8)                       :: probit_obs_prior_mean, probit_obs_prior_var
         real(r8)                       :: probit_obs_inc(ens_size)
         real(r8)                       :: probit_obs_prior(ens_size), probit_obs_post(ens_size)
-        real(r8)                       :: probit_state_inc(ens_size)
+        real(r8)                       :: probit_state_inc(ens_size), ens_post_temp(ens_size)
         real(r8)                       :: probit_ens_prior(ens_size), probit_ens_post(ens_size)
         type(distribution_params_type) :: obs_dist_params, state_dist_params
 

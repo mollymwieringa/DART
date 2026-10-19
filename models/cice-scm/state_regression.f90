@@ -19,7 +19,7 @@ program state_regression
     real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
-    real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), ens_post_temp(:),  &
+    real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), &
                              ens_prior_a(:,:), ens_prior_v(:,:), ens_prior_dr(:,:), &
                              ens_post_a(:,:), ens_post_v(:,:), ens_post_dr(:,:), &
                              H_l(:,:), H_u(:,:)
@@ -53,7 +53,6 @@ program state_regression
     allocate(ens_post_dr(ens_size, nc2))
     allocate(H_l(ens_size, nc))
     allocate(H_u(ens_size, nc))
-    allocate(ens_post_temp(ens_size))
     allocate(asprd(nc))
     allocate(fsprd(nc))
     allocate(mean(nc))
