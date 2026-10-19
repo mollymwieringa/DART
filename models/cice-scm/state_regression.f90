@@ -5,11 +5,11 @@ program state_regression
                                         check_namelist_read, find_namelist_in_file
     use distribution_params_mod, only : NORMAL_DISTRIBUTION, BOUNDED_NORMAL_RH_DISTRIBUTION, KDE_DISTRIBUTION
     use fractional_reg_mod,      only : state_regress_disaggregation, state_regress_relativefrac,   &
-                                        state_regress_probit, get_delta_representation_from state,  &
+                                        state_regress_probit, get_delta_representation_from_state,  &
                                         get_state_from_delta_representation, rebalance_volume, postprocess
 
     ! Declare variables
-    integer               :: ens_size, nc, nc_exp
+    integer               :: ens_size, nc, nc_exp, nc2, kcatbound
     integer               :: iunit, io, i, j, istatus
     integer               :: dist_for_obs, dist_for_state
     logical               :: state_bounded_below, state_bounded_above, fexists
@@ -21,7 +21,8 @@ program state_regression
     real(r8)              :: obs_lower_bound, obs_upper_bound
     real(r8), allocatable :: obs_prior(:), obs_post(:), obs_inc(:), ens_post_temp(:),  &
                              ens_prior_a(:,:), ens_prior_v(:,:), ens_prior_dr(:,:), &
-                             ens_post_a(:,:), ens_post_v(:,:), ens_post_dr(:,:)
+                             ens_post_a(:,:), ens_post_v(:,:), ens_post_dr(:,:), &
+                             H_l(:,:), H_u(:,:)
     real(r8), allocatable :: asprd(:), fsprd(:), mean(:), inflate_cat(:)
 
     ! Handle namelist reading 
@@ -30,7 +31,8 @@ program state_regression
                                       state_bounded_below, state_bounded_above, &
                                       state_lower_bound, state_upper_bound, &
                                       regression_type, regression_check, &
-                                      delta_representation, ens_size, inflate, nc
+                                      delta_representation, ens_size, inflate, nc, &
+                                      kcatbound
     
     call initialize_utilities()
 
@@ -39,6 +41,7 @@ program state_regression
     call check_namelist_read(iunit, io, "state_regression_nml")
 
     ! Allocate variables of interest
+    nc2 = nc * 2
     allocate(obs_prior(ens_size))
     allocate(obs_post(ens_size))
     allocate(obs_inc(ens_size))
@@ -46,8 +49,10 @@ program state_regression
     allocate(ens_post_a(ens_size, nc))
     allocate(ens_prior_v(ens_size, nc))
     allocate(ens_post_v(ens_size, nc))
-    allocate(ens_prior_dr(ens_size, nc*2))
-    allocate(ens_post_dr(ens_size, nc*2))
+    allocate(ens_prior_dr(ens_size, nc2))
+    allocate(ens_post_dr(ens_size, nc2))
+    allocate(H_l(ens_size, nc))
+    allocate(H_u(ens_size, nc))
     allocate(ens_post_temp(ens_size))
     allocate(asprd(nc))
     allocate(fsprd(nc))
@@ -135,7 +140,7 @@ program state_regression
         call state_regress_disaggregation(obs_prior, obs_post, ens_prior_a, ens_post_a, ens_size, nc, &
                                           obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                           state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound)
-        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         call cpu_time(end_time)
         print *, 'Time for regression by disaggregation: ', end_time - start_time
 
@@ -151,8 +156,8 @@ program state_regression
 
         if (delta_representation) then
             ! Get the delta_representation from the state
-            call get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, ens_prior_dr, nc, ens_size)
-            call state_regress_relativefrac(obs_prior, obs_post, ens_prior_dr, ens_post_dr, ens_size, nc, &
+            call get_delta_representation_from_state(ens_prior_a, ens_prior_v, H_l, H_u, ens_prior_dr, nc, ens_size, kcatbound)
+            call state_regress_relativefrac(obs_prior, obs_post, ens_prior_dr, ens_post_dr, ens_size, nc2, &
                                             dist_for_obs, dist_for_state, &
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                             state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
@@ -164,7 +169,7 @@ program state_regression
                                             obs_bounded_above, obs_bounded_below, obs_upper_bound, obs_lower_bound, &
                                             state_bounded_above, state_bounded_below, state_upper_bound, state_lower_bound, &
                                             regression_check)
-            call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+            call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         end if 
         call cpu_time(end_time)
         print *, 'Time for regression by relative fractional amount: ', end_time - start_time
@@ -208,7 +213,7 @@ program state_regression
                          state_upper_bound, state_lower_bound, &
                          obs_bounded_above, obs_bounded_below, &
                          obs_upper_bound, obs_lower_bound)
-        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         call cpu_time(end_time)
         print *, 'Time for probit postprocessing: ', end_time - start_time
 
@@ -243,7 +248,7 @@ program state_regression
                          state_upper_bound, state_lower_bound, &
                          obs_bounded_above, obs_bounded_below, &
                          obs_upper_bound, obs_lower_bound)
-        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size)
+        call rebalance_volume(ens_prior_a, ens_prior_v, ens_post_a, ens_post_v, nc, ens_size, kcatbound)
         call cpu_time(end_time)
         print *, 'Time for linear regression postprocessing: ', end_time - start_time
 
