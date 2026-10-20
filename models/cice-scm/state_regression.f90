@@ -20,6 +20,7 @@ program state_regression
     logical               :: obs_bounded_below, obs_bounded_above
     logical               :: delta_representation, regression_check
     character(len=256)    :: obs_dist, regression_type, filename
+    character(len=20)     :: state_dims(2)
     real(r8)              :: start_time, end_time, inflate
     real(r8)              :: state_lower_bound, state_upper_bound
     real(r8)              :: obs_lower_bound, obs_upper_bound
@@ -102,34 +103,38 @@ program state_regression
     ! -------------------------------------------------------------------------------------------------
     ! Initialize netcdf file for output
     filename = trim('state_regression_output.nc')
+    state_dims(1) = 'member'
+    state_dims(2) = 'nc'
     ncid = nc_create_file(filename, 'state_regression')
     call nc_define_dimension(ncid, 'member', ens_size, 'state_regression')
     call nc_define_dimension(ncid, 'nc', nc, 'state_regression')
     call nc_add_global_attribute(ncid, 'regression_type', trim(regression_type), 'state_regression')
-    call nc_define_double_variable(ncid, 'state_prior_area', 'member', 'nc', 'state_regression')
-    call nc_define_double_variable(ncid, 'state_prior_volume', 'member', 'nc', 'state_regression')
-    call nc_define_double_variable(ncid, 'state_post_a', 'member', 'nc', 'state_regression')
-    call nc_define_double_variable(ncid, 'state_post_v', 'member', 'nc', 'state_regression')
+    call nc_define_double_variable(ncid, 'state_prior_a', state_dims, 'state_regression')
+    call nc_define_double_variable(ncid, 'state_prior_v', state_dims, 'state_regression')
+    call nc_define_double_variable(ncid, 'state_post_a', state_dims, 'state_regression')
+    call nc_define_double_variable(ncid, 'state_post_v', state_dims, 'state_regression')
     call nc_define_double_variable(ncid, 'inflation', 'nc', 'state_regression')
     if (delta_representation) then
         call nc_define_dimension(ncid, 'nc2', nc2, 'state_regression')
-        call nc_define_double_variable(ncid, 'state_prior_dr', 'member', 'nc2', 'state_regression')
-        call nc_define_double_variable(ncid, 'state_post_dr', 'member', 'nc2', 'state_regression')
-        call nc_define_double_variable(ncid, 'H_l', 'member', 'nc', 'state_regression')
-        call nc_define_double_variable(ncid, 'H_u', 'member', 'nc', 'state_regression')
+        state_dims(2) = 'nc2'
+        call nc_define_double_variable(ncid, 'state_prior_dr', state_dims, 'state_regression')
+        call nc_define_double_variable(ncid, 'state_post_dr', state_dims, 'state_regression')
+        state_dims(2) = 'nc'
+        call nc_define_double_variable(ncid, 'H_l', state_dims, 'state_regression')
+        call nc_define_double_variable(ncid, 'H_u', state_dims, 'state_regression')
     endif
     if (regression_type == 'relativefrac') then
         call nc_define_double_variable(ncid, 'alpha', 'member', 'state_regression')
     else if (regression_type == 'probit_postprocess' .or. regression_type == 'linear_postprocess') then
-        call nc_define_double_variable(ncid, 'state_post_a_raw', 'member', 'nc', 'state_regression')
+        call nc_define_double_variable(ncid, 'state_post_a_raw', state_dims, 'state_regression')
     else
         print *, 'standard regression variables only!'
     end if 
     call nc_end_define_mode(ncid, 'state_regression')
 
     ! Load the prior ensemble information.
-    call nc_put_variable(ncid, 'state_prior_area', ens_prior_a, 'state_regression')
-    call nc_put_variable(ncid, 'state_prior_volume', ens_prior_v, 'state_regression')
+    call nc_put_variable(ncid, 'state_prior_a', ens_prior_a, 'state_regression')
+    call nc_put_variable(ncid, 'state_prior_v', ens_prior_v, 'state_regression')
 
     ! perform regressions 
     if (regression_type == 'disaggregation') then
