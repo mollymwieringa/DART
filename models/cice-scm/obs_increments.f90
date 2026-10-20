@@ -18,7 +18,8 @@ program obs_increments
    integer  :: obs_dist_type
    real(r8) :: y, obs_var
    integer  :: ens_size, nc
-   character(len=256) :: restart_file, filename
+   character(len=256) :: filename
+   character(len=20)  :: state_dims(2)
    real(r8), allocatable :: ens(:), state_ens_a(:,:), state_ens_v(:,:), obs_inc(:), likelihood(:)
    real(r8) :: like_sum, prior_mean, prior_var, net_a=0._r8
    real(r8) :: start_time, end_time
@@ -27,7 +28,7 @@ program obs_increments
 
    namelist / obs_increments_nml / bounded_below, bounded_above, &
                                    lower_bound, upper_bound, &
-                                   ens_size, nc, restart_file
+                                   ens_size, nc
 
    ! All tests involve a normal likelihood
    obs_dist_type = obs_dist_types%normal
@@ -45,10 +46,17 @@ program obs_increments
    allocate(state_ens_v(ens_size, nc))
 
    ! Read prior ensemble and observation information
-   ncid = nc_open_file_readonly(trim(restart_file), 'read prior observation ensemble')
-   call nc_get_variable(ncid, 'aicen', state_ens_a, 'read prior observation ensemble')
-   call nc_get_variable(ncid, 'vicen', state_ens_v, 'read prior observation ensemble')
-   call nc_close_file(ncid, 'read prior observation ensemble')
+   open(unit=23, file='prior_ens_a.txt', status='OLD')
+   do i=1, ens_size
+      read(23,*) state_ens_a(i, :)
+   end do
+   close(23)
+
+   open(unit=23, file='prior_ens_v.txt', status='OLD')
+   do i=1, ens_size
+      read(23,*) state_ens_v(i, :)
+   end do
+   close(23)
    
    ! calculate ens by summing state_ens over the second dimension (nc)
    ens = sum(state_ens_a, dim=2)
@@ -93,20 +101,22 @@ program obs_increments
 
    ! write out the analysis ensemble and increments to a netcdf file 
    filename = trim('obs_increments_output.nc')
+   state_dims(1) = 'member'
+   state_dims(2) = 'nc'
    ncid = nc_create_file(filename, 'create output file for obs increments')
    call nc_define_dimension(ncid, 'member', ens_size, 'create output file for obs increments')
    call nc_define_dimension(ncid, 'nc', nc, 'create_output file for obs increments')
    call nc_define_double_variable(ncid, 'obs_prior', 'member', 'create output file for obs increments')
    call nc_define_double_variable(ncid, 'obs_post', 'member', 'create output file for obs increments')
    call nc_define_double_variable(ncid, 'obs_incs', 'member', 'create output file for obs increments')
-   call nc_define_double_variable(ncid, 'state_prior_a', 'member', 'nc', 'create output file for obs increments')
-   call nc_define_double_variable(ncid, 'state_prior_v', 'member', 'nc', 'create output file for obs increments')
+   call nc_define_double_variable(ncid, 'state_prior_a', state_dims, 'create output file for obs increments')
+   call nc_define_double_variable(ncid, 'state_prior_v', state_dims, 'create output file for obs increments')
    call nc_end_define_mode(ncid, 'create output file for obs increments')
    call nc_put_variable(ncid, 'obs_prior', ens, 'create output file for obs increments')
    call nc_put_variable(ncid, 'obs_post', ens + obs_inc, 'create output file for obs increments')
    call nc_put_variable(ncid, 'obs_incs', obs_inc, 'create output file for obs increments')
-   call nc_put_variable(ncid, 'state_prior_a', state_prior_a, 'create output file for obs increments')
-   call nc_put_variable(ncid, 'state_prior_v', state_prior_v, 'create output file for obs increments')
+   call nc_put_variable(ncid, 'state_prior_a', state_ens_a, 'create output file for obs increments')
+   call nc_put_variable(ncid, 'state_prior_v', state_ens_v, 'create output file for obs increments')
    call nc_close_file(ncid, 'close output file for obs increments')
 
    call finalize_utilities()
