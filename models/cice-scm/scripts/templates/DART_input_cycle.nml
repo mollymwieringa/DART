@@ -151,7 +151,6 @@
     upper_bound = -888888
     ens_size = 29
     nc = 5
-    restart_file = 'icepack_restart.nc'
 /
 
 &state_regression_nml
